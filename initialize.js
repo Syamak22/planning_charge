@@ -46,8 +46,8 @@ function(instance, context) {
     /* en-tête calendrier (sticky) */
     s + '.ch{position:sticky;top:0;background:#fff;z-index:10;width:max-content;min-width:100%;border-bottom:2px solid #e5e7eb;box-shadow:0 2px 8px rgba(0,0,0,.07);}',
     s + '.mr{display:flex;padding:4px 0 0;}',
-    s + '.ms{display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden;font-size:10px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.07em;padding:0 4px;}',
-    s + '.ms+.ms{border-left:1px solid #e5e7eb;}',
+    s + '.ms{display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden;font-size:11px;font-weight:700;color:#111827;padding:0 4px;}',
+    s + '.ms+.ms{border-left:2px solid #6b7280;}',
 
     /* groupes de semaines */
     s + '.wr{display:flex;}',
@@ -75,8 +75,8 @@ function(instance, context) {
     s + '.tl.we{border-radius:5px;}',
 
     /* graphique de charge */
-    s + '.cp{display:flex;flex-shrink:0;overflow:hidden;border-bottom:2px solid #e5e7eb;background:#fff;}',
-    s + '.cy{width:var(--pc-lw,296px);flex-shrink:0;position:relative;border-right:2px solid #e5e7eb;padding-bottom:22px;}',
+    s + '.cp{display:flex;flex-shrink:0;overflow:hidden;border-bottom:2px solid #e5e7eb;background:#fff;position:relative;}',
+    s + '.cy{position:absolute;top:0;right:0;bottom:22px;left:0;pointer-events:none;z-index:1;}',
     s + '.ca{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;}',
     s + '.cs{flex:1;overflow:hidden;min-height:0;position:relative;}',
     s + '.cm{height:22px;flex-shrink:0;position:relative;overflow:hidden;border-top:1px solid #f3f4f6;}',

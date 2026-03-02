@@ -6,7 +6,7 @@ function(instance, properties) {
   var CW  = 26, CWE = 16, CH = 22, CG = 2, WS = 5;
   //          ^ jour ouvré  ^ samedi/dimanche (plus étroit)
   var LW = 296, RH = 30;
-  var MOIS  = ['Janv','Fév','Mars','Avr','Mai','Juin','Juil','Août','Sept','Oct','Nov','Déc'];
+  var MOIS  = ['Janv','Fev','Mars','Avril','Mai','Juin','Juillet','Aout','Sept','Oct','Nov','Dec'];
   var JOURS = ['Di','Lun','Mar','Mer','Jeu','Ven','Sa'];  // index = getDay()
 
   /* ── DONNÉES EXEMPLE ─────────────────────────────────────────────── */

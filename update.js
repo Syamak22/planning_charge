@@ -75,8 +75,8 @@ function(instance, properties, context) {
     var WS       = 8;    // séparateur de semaines (px) 
     var NUM_WK   = semPassees + semFutures;
     var JOURS    = ['Di', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sa'];
-    var MOIS     = ['Janv', 'Fév', 'Mars', 'Avr', 'Mai', 'Juin',
-                    'Juil', 'Août', 'Sept', 'Oct', 'Nov', 'Déc'];
+    var MOIS     = ['Janv', 'Fev', 'Mars', 'Avril', 'Mai', 'Juin',
+                    'Juillet', 'Aout', 'Sept', 'Oct', 'Nov', 'Dec'];
 
     /* ── Jours off (lookup O(1)) ─────────────────────────────────── */
     var offSet = {};
@@ -124,7 +124,7 @@ function(instance, properties, context) {
     days.forEach(function(day, idx) {
       var k = day.y + '-' + day.m;
       if (!moisSpans.length || moisSpans[moisSpans.length - 1].k !== k)
-        moisSpans.push({ k: k, lbl: MOIS[day.m] + " '" + String(day.y).slice(2), fi: idx, li: idx });
+        moisSpans.push({ k: k, lbl: MOIS[day.m] + ' ' + String(day.y).slice(2), fi: idx, li: idx });
       moisSpans[moisSpans.length - 1].li = idx;
     });
 
@@ -230,9 +230,15 @@ function(instance, properties, context) {
     }
 
     /* ── En-tête calendrier ──────────────────────────────────────── */
-    var mHtml = moisSpans.map(function(ms) {
-      var last = days[ms.li];
-      var w    = dayX[ms.li] + (last.isWeekend ? CWE : CW) - dayX[ms.fi];
+    var mHtml = moisSpans.map(function(ms, mi) {
+      var w;
+      if (mi < moisSpans.length - 1) {
+        // Inclut le gap (CG ou WS) qui suit le dernier jour du mois
+        w = dayX[moisSpans[mi + 1].fi] - dayX[ms.fi];
+      } else {
+        var last = days[ms.li];
+        w = dayX[ms.li] + (last.isWeekend ? CWE : CW) - dayX[ms.fi];
+      }
       return '<div class="ms" style="width:' + w + 'px">' + ms.lbl + '</div>';
     }).join('');
 
@@ -315,7 +321,7 @@ function(instance, properties, context) {
     days.forEach(function(day, di) {
       var key = day.y + '-' + day.m;
       if (!curMo || curMo.key !== key) {
-        curMo = { key: key, lbl: MOIS[day.m] + " '" + String(day.y).slice(2), max: 0 };
+        curMo = { key: key, lbl: MOIS[day.m] + ' ' + String(day.y).slice(2), max: 0 };
         monthAgg.push(curMo);
       }
       if (!day.isWeekend && !day.isOff && allCounts[di] > curMo.max) {
@@ -372,14 +378,14 @@ function(instance, properties, context) {
     // Label centré sous chaque barre de mois
     instance.data.chartMonths.innerHTML = monthAgg.map(function(mo, i) {
       var pct = ((i + 0.425) / nMonths * 100).toFixed(2);
-      return '<span style="position:absolute;left:' + pct + '%;transform:translateX(-50%);font-size:9px;' +
-             'color:#9ca3af;white-space:nowrap;line-height:22px;">' + mo.lbl + '</span>';
+      return '<span style="position:absolute;left:' + pct + '%;transform:translateX(-50%);font-size:10px;' +
+             'font-weight:700;color:#111827;white-space:nowrap;line-height:22px;">' + mo.lbl + '</span>';
     }).join('');
 
     // Axe Y : uniquement la valeur max_chantiers, alignée sur la ligne limite
     instance.data.chartYaxis.innerHTML =
-      '<span style="position:absolute;right:8px;top:' + lineTopPct + '%;' +
-      'transform:translateY(-50%);font-size:9px;font-weight:700;color:' + couleurLimite + ';line-height:1;">' +
+      '<span style="position:absolute;left:8px;top:' + lineTopPct + '%;' +
+      'transform:translateY(-100%);font-size:9px;font-weight:700;color:' + couleurLimite + ';line-height:1;padding-bottom:2px;">' +
       maxCh + '</span>';
 
     /* ── Options du filtre statut ─────────────────────────────────── */
