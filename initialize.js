@@ -21,6 +21,8 @@ function(instance, context) {
     s + '.tot{font-size:12px;color:#6b7280;}',
     s + '.stf{display:flex;align-items:center;gap:6px;background:#f3f4f6;border-radius:8px;padding:5px 11px;margin-left:auto;}',
     s + '.stf select{border:none;background:none;outline:none;font-size:12px;color:#374151;font-family:inherit;cursor:pointer;}',
+    s + '.aj{font-size:11px;font-weight:600;color:#6b7280;background:none;border:1px solid #d1d5db;border-radius:6px;padding:3px 8px;cursor:pointer;line-height:1.4;white-space:nowrap;font-family:inherit;}',
+    s + '.aj:hover{background:#f3f4f6;color:#374151;border-color:#9ca3af;}',
 
     /* corps */
     s + '.bd{display:flex;flex:1;overflow:hidden;position:relative;}',
@@ -31,6 +33,8 @@ function(instance, context) {
     s + '.pl{overflow-y:hidden;flex:1;}',           /* scroll piloté par .rp */
     s + '.pr{display:flex;align-items:center;height:30px;padding:0 12px 0 10px;border-bottom:1px solid #f3f4f6;font-size:11.5px;color:#374151;cursor:pointer;}',
     s + '.pr:hover{background:#f9fafb;}',
+    s + '.pr.sel{background:#fdf2f8;box-shadow:inset 3px 0 0 #e91e8c;}',
+    s + '.gr.sel{background:#fdf2f8;}',
     s + '.pn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
 
     /* panneau droit */
@@ -70,6 +74,13 @@ function(instance, context) {
     s + '.tl{flex-shrink:0;height:22px;border-radius:5px;}',
     s + '.tl.we{border-radius:5px;}',
 
+    /* graphique de charge */
+    s + '.cp{display:flex;flex-shrink:0;overflow:hidden;border-bottom:2px solid #e5e7eb;background:#fff;}',
+    s + '.cy{width:var(--pc-lw,296px);flex-shrink:0;position:relative;border-right:2px solid #e5e7eb;padding-bottom:22px;}',
+    s + '.ca{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;}',
+    s + '.cs{flex:1;overflow:hidden;min-height:0;position:relative;}',
+    s + '.cm{height:22px;flex-shrink:0;position:relative;overflow:hidden;border-top:1px solid #f3f4f6;}',
+
     /* loader */
     s + '.ld{position:absolute;inset:0;background:rgba(255,255,255,.9);display:flex;align-items:center;justify-content:center;z-index:20;}',
     s + '.ls{width:32px;height:32px;border:3px solid #e9eaec;border-top-color:#e91e8c;border-radius:50%;}',
@@ -89,7 +100,12 @@ function(instance, context) {
     '<div class="tb">' +
       '<div class="srch">' + svgSearch + '<input type="text" placeholder="nom chantier, nom client…"></div>' +
       '<span class="tot">Total : —</span>' +
+      '<button class="aj">Aujourd\'hui</button>' +
       '<div class="stf">' + svgFilter + '<select><option value="">Tous les statuts</option></select></div>' +
+    '</div>' +
+    '<div class="cp">' +
+      '<div class="cy"></div>' +
+      '<div class="ca"><div class="cs"></div><div class="cm"></div></div>' +
     '</div>' +
     '<div class="bd">' +
       '<div class="lp"><div class="lh"></div><div class="pl"></div></div>' +
@@ -110,34 +126,73 @@ function(instance, context) {
   instance.data.calGrid  = root.querySelector('.cg');
   instance.data.leftPnl  = root.querySelector('.lp');
   instance.data.rightPnl = root.querySelector('.rp');
-  instance.data.loaderEl = root.querySelector('.ld');
+  instance.data.loaderEl    = root.querySelector('.ld');
+  instance.data.chartPanel  = root.querySelector('.cp');
+  instance.data.chartYaxis  = root.querySelector('.cy');
+  instance.data.chartArea   = root.querySelector('.cs');
+  instance.data.chartMonths = root.querySelector('.cm');
+  instance.data.todayBtn    = root.querySelector('.aj');
+
+  /* ── Bouton Aujourd'hui ──────────────────────────────────────────── */
+  instance.data.todayBtn.addEventListener('click', function() {
+    instance.data.rightPnl.scrollLeft = instance.data.todayScrollX || 0;
+  });
+
+  /* ── Sélection chantier ──────────────────────────────────────────── */
+  instance.data.projList.addEventListener('click', function(e) {
+    var row = e.target.closest ? e.target.closest('.pr') : null;
+    if (!row) return;
+    var idx = parseInt(row.getAttribute('data-idx'), 10);
+    var list = instance.data.chantiersList;
+    if (!list || isNaN(idx) || idx < 0 || idx >= list.length) return;
+
+    // Highlight ligne gauche + ligne grille
+    instance.data.projList.querySelectorAll('.pr').forEach(function(r) { r.classList.remove('sel'); });
+    instance.data.calGrid.querySelectorAll('.gr').forEach(function(r) { r.classList.remove('sel'); });
+    row.classList.add('sel');
+    var gRows = instance.data.calGrid.querySelectorAll('.gr');
+    if (gRows[idx]) gRows[idx].classList.add('sel');
+
+    instance.data.selectedIdx = idx;
+
+    instance.data.isUpdating = true;
+    instance.publishState('selected_chantier', list[idx].raw);
+    instance.triggerEvent('chantier_selectionne');
+    instance.data.isUpdating = false;
+  });
 
   /* ── Synchronisation scroll vertical gauche ↔ droite ─────────────── */
   instance.data.rightPnl.addEventListener('scroll', function() {
     instance.data.projList.scrollTop = this.scrollTop;
   });
 
-  /* ── Filtre statut → publishState ────────────────────────────────── */
-  instance.data.stfSel.addEventListener('change', function() {
-    instance.data.isUpdating = true;
-    instance.publishState('statut_selectionne', this.value);
-    instance.data.isUpdating = false;
-  });
-
-  /* ── Recherche textuelle ──────────────────────────────────────────── */
-  instance.data.srchInp.addEventListener('input', function() {
-    var q     = this.value.toLowerCase();
+  /* ── Filtre recherche textuelle ──────────────────────────────────── */
+  instance.data.applyFilters = function() {
+    var q     = instance.data.srchInp.value.toLowerCase();
     var pRows = instance.data.projList.querySelectorAll('.pr');
     var gRows = instance.data.calGrid.querySelectorAll('.gr');
     var vis   = 0;
     pRows.forEach(function(row, i) {
       var name = (row.getAttribute('data-name') || '').toLowerCase();
       var show = !q || name.indexOf(q) >= 0;
-      row.style.display        = show ? '' : 'none';
+      row.style.display = show ? '' : 'none';
       if (gRows[i]) gRows[i].style.display = show ? '' : 'none';
       if (show) vis++;
     });
     instance.data.totSpan.textContent = 'Total : ' + vis;
+  };
+
+  /* ── Dropdown statut : publie le state + déclenche l'event pour le workflow Bubble */
+  instance.data.stfSel.addEventListener('change', function() {
+    instance.data.isUpdating = true;
+    instance.publishState('statut_selectionne', this.value);
+    instance.triggerEvent('statut_change');
+    instance.data.isUpdating = false;
+  });
+
+  /* ── Recherche textuelle ──────────────────────────────────────────── */
+  instance.data.srchInp.addEventListener('input', function() {
+    instance.data.applyFilters();
   });
 
   instance.data.initialized = true;

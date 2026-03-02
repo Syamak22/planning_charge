@@ -209,6 +209,81 @@ function(instance, properties) {
     return '<div class="cc" style="width:' + w + 'px;color:' + col + '">' + (n || '') + '</div>';
   });
 
+  /* ── GRAPHIQUE DE CHARGE — agrégation par mois (max journalier) ── */
+  var MAX_CH_PV    = properties.max_chantiers || 10;
+  var CHART_H_PV   = 100;
+  var COL_NORMAL   = properties.couleur_normal || '#4ade80';
+  var COL_ALERTE   = properties.couleur_alerte || '#f97316';
+  var COL_DANGER   = properties.couleur_danger || '#dc2626';
+  var COL_LIMITE   = properties.couleur_limite || '#dc2626';
+  var SEUIL_ALERTE = (properties.seuil_alerte != null && properties.seuil_alerte > 0)
+                       ? Math.round(properties.seuil_alerte) : Math.round(MAX_CH_PV * 0.75);
+
+  // Compteurs par jour ouvré (même logique que dans update.js)
+  var pvCounts = days.map(function(day) {
+    if (day.isWeekend) return 0;
+    return chantiers.filter(function(c) { return c.c && day.wi >= c.f && day.wi <= c.t; }).length;
+  });
+
+  // Agrégation par mois : max journalier
+  var pvMonthAgg = [];
+  var pvCurMo    = null;
+  days.forEach(function(day, di) {
+    var key = day.y + '-' + day.m;
+    if (!pvCurMo || pvCurMo.key !== key) {
+      pvCurMo = { key: key, lbl: MOIS[day.m] + " '" + String(day.y).slice(2), max: 0 };
+      pvMonthAgg.push(pvCurMo);
+    }
+    if (!day.isWeekend && pvCounts[di] > pvCurMo.max) pvCurMo.max = pvCounts[di];
+  });
+
+  var pvNMonths = pvMonthAgg.length;
+  var pvMaxMo   = 0;
+  pvMonthAgg.forEach(function(mo) { if (mo.max > pvMaxMo) pvMaxMo = mo.max; });
+  var pvMaxY  = Math.max(MAX_CH_PV, pvMaxMo) * 1.25;
+  if (pvMaxY === 0) pvMaxY = 10;
+
+  function pvBarColor(n) {
+    if (n >= MAX_CH_PV)    return COL_DANGER;
+    if (n >= SEUIL_ALERTE) return COL_ALERTE;
+    return COL_NORMAL;
+  }
+
+  var pvBars = pvMonthAgg.map(function(mo, i) {
+    var n = mo.max;
+    if (n === 0) return '<rect x="' + i + '" y="' + (CHART_H_PV - 1) + '" width="0.85" height="1" fill="#e5e7eb"/>';
+    var bh = (CHART_H_PV * n / pvMaxY).toFixed(2);
+    var by = (CHART_H_PV - CHART_H_PV * n / pvMaxY).toFixed(2);
+    return '<rect x="' + i + '" y="' + by + '" width="0.85" height="' + bh + '" fill="' + pvBarColor(n) + '"/>';
+  }).join('');
+
+  var pvChartSvg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + pvNMonths + ' ' + CHART_H_PV + '"' +
+    ' preserveAspectRatio="none" style="width:100%;height:100%;display:block;">' +
+    pvBars + '</svg>';
+
+  // Chiffres en haut des barres (overlay HTML)
+  var pvBarLabels = pvMonthAgg.map(function(mo, i) {
+    var n = mo.max;
+    if (!n || CHART_H_PV * n / pvMaxY < 12) return '';
+    var leftPct = ((i + 0.425) / pvNMonths * 100).toFixed(2);
+    var topPct  = ((1 - n / pvMaxY) * 100 + 2).toFixed(2);
+    return '<span style="position:absolute;left:' + leftPct + '%;top:' + topPct + '%;' +
+           'transform:translateX(-50%);font-size:8px;font-weight:700;' +
+           'color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.5);line-height:1;">' + n + '</span>';
+  }).join('');
+
+  // Ligne rouge max_chantiers (overlay HTML)
+  var pvLineTopPct = ((1 - MAX_CH_PV / pvMaxY) * 100).toFixed(2);
+  var pvRedLine = '<div style="position:absolute;left:0;right:0;top:' + pvLineTopPct + '%;' +
+                  'height:2px;background:' + COL_LIMITE + ';pointer-events:none;z-index:2;"></div>';
+
+  // Labels centrés sous chaque barre
+  var pvMonths = pvMonthAgg.map(function(mo, i) {
+    var pct = ((i + 0.425) / pvNMonths * 100).toFixed(2);
+    return '<span style="position:absolute;left:' + pct + '%;transform:translateX(-50%);font-size:9px;' +
+           'color:#9ca3af;white-space:nowrap;line-height:22px;">' + mo.lbl + '</span>';
+  }).join('');
+
   $c.html(
     '<div class="' + pfx + '" style="height:100%">' +
       '<style>' + css + '</style>' +
@@ -231,6 +306,24 @@ function(instance, properties) {
             '<option>Terminé</option>' +
             '<option>En attente</option>' +
           '</select>' +
+        '</div>' +
+      '</div>' +
+
+      '<div style="display:flex;flex-shrink:0;height:120px;overflow:hidden;border-bottom:2px solid #e5e7eb;background:#fff;">' +
+        '<div style="width:' + LW + 'px;flex-shrink:0;position:relative;border-right:2px solid #e5e7eb;padding-bottom:22px;">' +
+          '<span style="position:absolute;right:8px;top:' + pvLineTopPct + '%;' +
+          'transform:translateY(-50%);font-size:9px;font-weight:700;color:' + COL_LIMITE + ';line-height:1;">' +
+          MAX_CH_PV + '</span>' +
+        '</div>' +
+        '<div style="flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;">' +
+          '<div style="flex:1;overflow:hidden;min-height:0;position:relative;">' +
+            pvChartSvg +
+            '<div style="position:absolute;inset:0;pointer-events:none;">' + pvBarLabels + '</div>' +
+            pvRedLine +
+          '</div>' +
+          '<div style="height:22px;flex-shrink:0;position:relative;overflow:hidden;border-top:1px solid #f3f4f6;">' +
+            pvMonths +
+          '</div>' +
         '</div>' +
       '</div>' +
 
