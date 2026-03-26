@@ -9,14 +9,25 @@ function(instance, properties, context) {
 
     /* ── Helpers ─────────────────────────────────────────────────── */
     function readList(ds) {
-      if (!ds || typeof ds.length !== 'function') return null;
-      var len = ds.length();
-      return len === 0 ? [] : ds.get(0, len);
+      if (!ds) return null;
+      if (typeof ds.length === 'function') {
+        var len = ds.length();
+        return len === 0 ? [] : ds.get(0, len);
+      }
+      if (typeof ds.length === 'number') {
+        return ds.length === 0 ? [] : Array.prototype.slice.call(ds);
+      }
+      return null;
     }
     function d0(dt) {                        // normalise une date à minuit
       if (!dt) return null;
       var d = new Date(dt); d.setHours(0, 0, 0, 0);
       return isNaN(d.getTime()) ? null : d;
+    }
+    function osDisplay(item) {               // label d'un item Option Set
+      if (!item) return '';
+      if (typeof item.get === 'function') return item.get('display') || '';
+      return String(item.display != null ? item.display : item);
     }
 
     /* ── Properties ──────────────────────────────────────────────── */
@@ -39,40 +50,85 @@ function(instance, properties, context) {
                          ? Math.round(properties.semaines_futures) : 78;
     var chartH       = (properties.chart_height != null && properties.chart_height >= 0)
                          ? Math.round(properties.chart_height) : 120;
-    var statutInitial = properties.statut_initial || '';
     var today        = d0(new Date());
 
-    var chantiersRaw     = readList(properties.chantiers_list);
-    var joursOffRaw      = readList(properties.jours_off_list);
-    var statutsRaw       = readList(properties.statuts_list);
-    var chantiersToutRaw = readList(properties.chantiers_tout_list);
+    /* ── Longueurs uniquement pour le hash (pas de fetch complet) ── */
+    function listLen(ds) {
+      if (!ds) return null;
+      if (typeof ds.length === 'function') return ds.length();
+      if (typeof ds.length === 'number')   return ds.length;
+      return null;
+    }
+    var chLen  = listLen(properties.chantiers_list);
+    var joLen  = listLen(properties.jours_off_list)      || 0;
+    var ctLen  = listLen(properties.chantiers_tout_list) || 0;
+    var stLen  = listLen(properties.statuts_list)        || 0;
+    var initSt = osDisplay(properties.statut_initial);
 
-    if (!chantiersRaw) { return; }
+    if (chLen === null) { return; }
 
-    /* ── Hash structurel (calendrier) ────────────────────────────── */
-    // Les couleurs/périodes sont vérifiées plus bas (après CP4) via un fingerprint
+    /* ── Hash structurel ─────────────────────────────────────────── */
     var hash = [
       today.toDateString(),
-      chantiersRaw.length,
-      joursOffRaw ? joursOffRaw.length : 0,
-      chantiersToutRaw ? chantiersToutRaw.length : 0,
-      maxCh,
-      semPassees,
-      semFutures,
-      chartH,
-      couleurNormal,
-      couleurAlerte,
-      couleurDanger,
-      couleurLimite,
-      seuilAlerte,
+      chLen, joLen, ctLen, stLen, initSt,
+      maxCh, semPassees, semFutures, chartH,
+      couleurNormal, couleurAlerte, couleurDanger, couleurLimite, seuilAlerte,
     ].join('|');
+
+    /* ── Fetch chantiers + fingerprint (avant génération calendrier) ─ */
+    var chantiersRaw     = readList(properties.chantiers_list);
+    var chantiersToutRaw = readList(properties.chantiers_tout_list);
+
+    function parseChantier(ch, idx) {
+      try {
+        var nom   = ch.get(champNom) || '(sans nom)';
+        var chef  = ch.get(champChef);
+        var color = (chef && typeof chef.get === 'function' ? chef.get(champCol) : null) || '#9ca3af';
+        var range = ch.get(champRange);
+        var periods = [];
+        if (range) {
+          var deb, fin;
+          if (Array.isArray(range) && range.length >= 2) {
+            deb = d0(range[0]);
+            fin = d0(range[1]);
+          } else {
+            deb = d0(range.start != null ? range.start : (typeof range.get === 'function' ? range.get('start') : null));
+            fin = d0(range.end   != null ? range.end   : (typeof range.get === 'function' ? range.get('end')   : null));
+          }
+          if (deb && fin) periods.push({ deb: deb, fin: fin });
+        }
+        return { nom: nom, color: color, periods: periods, raw: ch };
+      } catch(e) {
+        if (!(e instanceof Error)) throw e;
+        console.error('[PC] chantier[' + idx + '] crash:', e.message, '| ch=', ch);
+        return { nom: '(erreur)', color: '#9ca3af', periods: [] };
+      }
+    }
+    var chantiers     = chantiersRaw.map(parseChantier);
+    var chantiersTout = chantiersToutRaw ? chantiersToutRaw.map(parseChantier) : chantiers;
+
+    /* ── Fingerprint couleurs + périodes ─────────────────────────── */
+    var fp = chantiers.map(function(c) {
+      return c.color + (c.periods.length ? c.periods[0].deb.getTime() + '-' + c.periods[0].fin.getTime() : '');
+    }).join('|');
+    if (chantiersTout !== chantiers) {
+      fp += '|T:' + chantiersTout.map(function(c) {
+        return c.periods.length ? c.periods[0].deb.getTime() + '-' + c.periods[0].fin.getTime() : '';
+      }).join('|');
+    }
+
+    /* ── Sortie anticipée : avant toute génération calendrier/DOM ── */
+    if (instance.data.lastHash === hash && instance.data.lastFp === fp) { return; }
+
+    /* ── Fetch listes restantes (uniquement si re-render nécessaire) ─ */
+    var joursOffRaw  = readList(properties.jours_off_list);
+    var statutsRaw   = readList(properties.statuts_list);
 
     /* ── Constantes calendrier ───────────────────────────────────── */
     var CW       = 22;   // largeur cellule jour ouvré (px)
     var CWE      = 22;   // largeur cellule week-end (px)
-    var CH       = 22;   // hauteur cellule (px)
     var CG       = 3;    // gap inter-cellules (px)
-    var WS       = 8;    // séparateur de semaines (px) 
+    var WS       = 8;    // séparateur de semaines (px)
     var NUM_WK   = semPassees + semFutures;
     var JOURS    = ['Di', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sa'];
     var MOIS     = ['Janv', 'Fev', 'Mars', 'Avril', 'Mai', 'Juin',
@@ -88,7 +144,6 @@ function(instance, properties, context) {
     }
 
     /* ── Génération des jours calendrier ─────────────────────────── */
-    // Démarrer le lundi de la semaine (today - semPassees semaines)
     var calStart  = new Date(today);
     calStart.setDate(today.getDate() - semPassees * 7);
     var dow0      = calStart.getDay();
@@ -137,46 +192,6 @@ function(instance, properties, context) {
       });
       if (wi < weeks.length - 1) curX += WS;
     });
-
-    /* ── Chantiers + période (date range sur le chantier) ────────── */
-    function parseChantier(ch, idx) {
-      try {
-        var nom   = ch.get(champNom) || '(sans nom)';
-        var chef  = ch.get(champChef);
-        var color = (chef && typeof chef.get === 'function' ? chef.get(champCol) : null) || '#9ca3af';
-        var range = ch.get(champRange);
-        var periods = [];
-        if (range) {
-          var deb, fin;
-          if (Array.isArray(range) && range.length >= 2) {
-            deb = d0(range[0]);
-            fin = d0(range[1]);
-          } else {
-            deb = d0(range.start != null ? range.start : (typeof range.get === 'function' ? range.get('start') : null));
-            fin = d0(range.end   != null ? range.end   : (typeof range.get === 'function' ? range.get('end')   : null));
-          }
-          if (deb && fin) periods.push({ deb: deb, fin: fin });
-        }
-        return { nom: nom, color: color, periods: periods, raw: ch };
-      } catch(e) {
-        if (!(e instanceof Error)) throw e;
-        console.error('[PC] chantier[' + idx + '] crash:', e.message, '| ch=', ch);
-        return { nom: '(erreur)', color: '#9ca3af', periods: [] };
-      }
-    }
-    var chantiers     = chantiersRaw.map(parseChantier);
-    var chantiersTout = chantiersToutRaw ? chantiersToutRaw.map(parseChantier) : chantiers;
-
-    /* ── Fingerprint couleurs + périodes : détecte les changements en base ── */
-    var fp = chantiers.map(function(c) {
-      return c.color + (c.periods.length ? c.periods[0].deb.getTime() + '-' + c.periods[0].fin.getTime() : '');
-    }).join('|');
-    if (chantiersTout !== chantiers) {
-      fp += '|T:' + chantiersTout.map(function(c) {
-        return c.periods.length ? c.periods[0].deb.getTime() + '-' + c.periods[0].fin.getTime() : '';
-      }).join('|');
-    }
-    if (instance.data.lastHash === hash && instance.data.lastFp === fp) { return; }
 
     /* ── Matrice d'activité + compteurs ─────────────────────────── */
     var counts = [];
@@ -229,19 +244,19 @@ function(instance, properties, context) {
       }).join('');
     }
 
-    /* ── En-tête calendrier ──────────────────────────────────────── */
-    var mHtml = moisSpans.map(function(ms, mi) {
-      var w;
-      if (mi < moisSpans.length - 1) {
-        // Inclut le gap (CG ou WS) qui suit le dernier jour du mois
-        w = dayX[moisSpans[mi + 1].fi] - dayX[ms.fi];
-      } else {
-        var last = days[ms.li];
-        w = dayX[ms.li] + (last.isWeekend ? CWE : CW) - dayX[ms.fi];
-      }
-      return '<div class="ms" style="width:' + w + 'px">' + ms.lbl + '</div>';
-    }).join('');
+    /* ── Échelle Y + couleur des barres ─────────────────────────── */
+    var maxAllCount = 0;
+    allCounts.forEach(function(n) { if (n > maxAllCount) maxAllCount = n; });
+    var maxY = Math.max(maxCh, maxAllCount) * 1.25;
+    if (maxY === 0) maxY = 10;
 
+    function barColor(n) {
+      if (n >= maxCh)       return couleurDanger;
+      if (n >= seuilAlerte) return couleurAlerte;
+      return couleurNormal;
+    }
+
+    /* ── En-tête calendrier ──────────────────────────────────────── */
     var nomHtml = byWeek(function(day) {
       var w   = day.isWeekend ? CWE : CW;
       var cls = 'dc' + (day.isWeekend ? ' we' : day.isOff ? ' jo' : '');
@@ -264,8 +279,43 @@ function(instance, properties, context) {
       return '<div class="cc" style="width:' + w + 'px;color:' + col + '">' + txt + '</div>';
     });
 
+    /* Rangée graphe par jour (dans le header scrollable) */
+    var lineTopPx = Math.round(chartH * (1 - maxCh / maxY));
+
+    // Lookup mois → index pour le fond alterné
+    var dayMoIdx = [];
+    moisSpans.forEach(function(ms, mi) {
+      for (var di = ms.fi; di <= ms.li; di++) dayMoIdx[di] = mi;
+    });
+
+    // Labels de mois en overlay dans le graphe
+    var moLabels = moisSpans.map(function(ms) {
+      return '<span style="position:absolute;left:' + (dayX[ms.fi] + 4) + 'px;top:4px;' +
+             'font-size:12px;font-weight:900;color:#000000;pointer-events:none;z-index:3;white-space:nowrap;">' +
+             ms.lbl + '</span>';
+    }).join('');
+
+    var chartRowHtml =
+      '<div class="chg" style="height:' + chartH + 'px">' +
+        '<div class="wr">' +
+          byWeek(function(day, di) {
+            var w    = day.isWeekend ? CWE : CW;
+            var n    = allCounts[di];
+            var bh   = (!day.isWeekend && !day.isOff && n > 0) ? Math.round(chartH * n / maxY) : 0;
+            var bgMo = (dayMoIdx[di] % 2 === 0) ? 'rgba(0,0,0,0.03)' : 'transparent';
+            return '<div style="width:' + w + 'px;height:' + chartH + 'px;display:flex;align-items:flex-end;justify-content:center;background:' + bgMo + ';">' +
+                   (bh > 0
+                     ? '<div style="width:70%;height:' + bh + 'px;background:' + barColor(n) + ';border-radius:2px 2px 0 0;"></div>'
+                     : '') +
+                   '</div>';
+          }) +
+        '</div>' +
+        moLabels +
+        '<div style="position:absolute;left:0;right:0;top:' + lineTopPx + 'px;height:2px;background:' + couleurLimite + ';pointer-events:none;z-index:2;"></div>' +
+      '</div>';
+
     instance.data.calHdr.innerHTML =
-      '<div class="mr">' + mHtml   + '</div>' +
+      chartRowHtml +
       '<div class="wr">' + nomHtml + '</div>' +
       '<div class="wr">' + numHtml + '</div>' +
       '<div class="cr">' + cntHtml + '</div>';
@@ -312,94 +362,25 @@ function(instance, properties, context) {
       if (gRows[instance.data.selectedIdx]) gRows[instance.data.selectedIdx].classList.add('sel');
     }
 
-    /* ── Graphique de charge — agrégation par mois (max journalier) ── */
-    instance.data.chartPanel.style.height = chartH + 'px';
-
-    // Un objet par mois : max des counts sur les jours ouvrés du mois
-    var monthAgg = [];
-    var curMo    = null;
-    days.forEach(function(day, di) {
-      var key = day.y + '-' + day.m;
-      if (!curMo || curMo.key !== key) {
-        curMo = { key: key, lbl: MOIS[day.m] + ' ' + String(day.y).slice(2), max: 0 };
-        monthAgg.push(curMo);
-      }
-      if (!day.isWeekend && !day.isOff && allCounts[di] > curMo.max) {
-        curMo.max = allCounts[di];
-      }
-    });
-
-    var nMonths  = monthAgg.length;
-    var SVGH     = 100;
-    var maxMo    = 0;
-    monthAgg.forEach(function(mo) { if (mo.max > maxMo) maxMo = mo.max; });
-    var maxY     = Math.max(maxCh, maxMo) * 1.25;
-    if (maxY === 0) maxY = 10;
-
-    function barColor(n) {
-      if (n >= maxCh)       return couleurDanger;
-      if (n >= seuilAlerte) return couleurAlerte;
-      return couleurNormal;
-    }
-
-    var svgBars = monthAgg.map(function(mo, i) {
-      var n = mo.max;
-      if (n === 0) {
-        return '<rect x="' + i + '" y="' + (SVGH - 1) + '" width="0.85" height="1" fill="#e5e7eb"/>';
-      }
-      var bh = (SVGH * n / maxY).toFixed(2);
-      var by = (SVGH - SVGH * n / maxY).toFixed(2);
-      return '<rect x="' + i + '" y="' + by + '" width="0.85" height="' + bh + '" fill="' + barColor(n) + '"/>';
-    }).join('');
-
-    // Chiffres en haut des barres (overlay HTML)
-    var barLabels = monthAgg.map(function(mo, i) {
-      var n = mo.max;
-      if (!n || SVGH * n / maxY < 12) return '';  // barre trop petite
-      var leftPct = ((i + 0.425) / nMonths * 100).toFixed(2);
-      var topPct  = ((1 - n / maxY) * 100 + 2).toFixed(2);  // juste sous le sommet
-      return '<span style="position:absolute;left:' + leftPct + '%;top:' + topPct + '%;' +
-             'transform:translateX(-50%);font-size:8px;font-weight:700;' +
-             'color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.5);line-height:1;">' + n + '</span>';
-    }).join('');
-
-    // Ligne rouge max_chantiers (overlay HTML, épaisseur fixe indépendante du scale)
-    var lineTopPct = ((1 - maxCh / maxY) * 100).toFixed(2);
-    var redLine = '<div style="position:absolute;left:0;right:0;top:' + lineTopPct + '%;' +
-                  'height:2px;background:' + couleurLimite + ';pointer-events:none;z-index:2;"></div>';
-
-    instance.data.chartArea.innerHTML =
-      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + nMonths + ' ' + SVGH + '"' +
-      ' preserveAspectRatio="none" style="width:100%;height:100%;display:block;">' +
-      svgBars + '</svg>' +
-      '<div style="position:absolute;inset:0;pointer-events:none;">' + barLabels + '</div>' +
-      redLine;
-
-    // Label centré sous chaque barre de mois
-    instance.data.chartMonths.innerHTML = monthAgg.map(function(mo, i) {
-      var pct = ((i + 0.425) / nMonths * 100).toFixed(2);
-      return '<span style="position:absolute;left:' + pct + '%;transform:translateX(-50%);font-size:10px;' +
-             'font-weight:700;color:#111827;white-space:nowrap;line-height:22px;">' + mo.lbl + '</span>';
-    }).join('');
-
-    // Axe Y : uniquement la valeur max_chantiers, alignée sur la ligne limite
-    instance.data.chartYaxis.innerHTML =
-      '<span style="position:absolute;left:8px;top:' + lineTopPct + '%;' +
-      'transform:translateY(-100%);font-size:9px;font-weight:700;color:' + couleurLimite + ';line-height:1;padding-bottom:2px;">' +
-      maxCh + '</span>';
-
     /* ── Options du filtre statut ─────────────────────────────────── */
     if (statutsRaw && statutsRaw.length) {
-      var sel  = instance.data.stfSel;
-      var curr = sel.value;
-      sel.innerHTML = '<option value="">Tous les statuts</option>' +
+      var curr = instance.data.currentStatutVal;
+      var map  = {};
+      instance.data.sddPanel.innerHTML =
+        '<div class="sdd-item" data-val="">Tous les statuts</div>' +
         statutsRaw.map(function(s) {
-          return '<option value="' + String(s).replace(/"/g, '&quot;') + '">' + s + '</option>';
+          var lbl = osDisplay(s);
+          map[lbl] = s;
+          return '<div class="sdd-item" data-val="' + lbl.replace(/"/g, '&quot;') + '">' + lbl + '</div>';
         }).join('');
-      // Restaure la sélection : choix de l'utilisateur, ou statut_initial au premier rendu
-      var restoreVal = curr || (!instance.data.statutInitDone ? statutInitial : '');
-      if (restoreVal) sel.value = restoreVal;
-      instance.data.statutInitDone = true;
+      instance.data.statutsMap = map;
+      if (curr === null && !instance.data.statutInitialApplied && initSt) {
+        instance.data.setStatut(initSt);
+        instance.data.statutInitialApplied = true;
+        instance.publishState('statut_selectionne', properties.statut_initial || null);
+      } else {
+        instance.data.setStatut(curr || '');
+      }
     }
 
     /* ── Position X d'aujourd'hui + scroll initial (une seule fois) ── */

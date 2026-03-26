@@ -66,7 +66,7 @@ function(instance, properties) {
   days.forEach(function(day, idx) {
     var k = day.y + '-' + day.m;
     if (!moisSpans.length || moisSpans[moisSpans.length - 1].k !== k)
-      moisSpans.push({ k:k, lbl:MOIS[day.m] + " '" + String(day.y).slice(2), firstIdx:idx, lastIdx:idx });
+      moisSpans.push({ k:k, lbl:MOIS[day.m] + ' ' + String(day.y).slice(2), firstIdx:idx, lastIdx:idx });
     moisSpans[moisSpans.length - 1].lastIdx = idx;
   });
 
@@ -93,6 +93,7 @@ function(instance, properties) {
       'border-radius:8px;padding:5px 11px;flex:1;max-width:268px;}' +
     q + '.sb input{border:none;background:none;outline:none;font-size:12px;color:#374151;width:100%;}' +
     q + '.tot{font-size:12px;color:#6b7280;}' +
+    q + '.aj{font-size:11px;font-weight:600;color:#6b7280;background:none;border:1px solid #d1d5db;border-radius:6px;padding:3px 8px;line-height:1.4;white-space:nowrap;font-family:inherit;}' +
     q + '.sf{display:flex;align-items:center;gap:6px;background:#f3f4f6;border-radius:8px;padding:5px 11px;margin-left:auto;}' +
     q + '.sf select{border:none;background:none;outline:none;font-size:12px;color:#374151;cursor:pointer;font-family:inherit;}' +
 
@@ -101,7 +102,7 @@ function(instance, properties) {
     /* panneau gauche */
     q + '.lp{width:' + LW + 'px;flex-shrink:0;display:flex;flex-direction:column;' +
       'border-right:2px solid #e5e7eb;background:#fff;z-index:3;}' +
-    q + '.lh{height:72px;flex-shrink:0;border-bottom:2px solid #e5e7eb;}' +
+    q + '.lh{height:132px;flex-shrink:0;border-bottom:2px solid #e5e7eb;}' +
     q + '.pl{overflow-y:auto;flex:1;}' +
     q + '.pr{display:flex;align-items:center;height:' + RH + 'px;' +
       'padding:0 12px 0 10px;border-bottom:1px solid #f3f4f6;font-size:11.5px;color:#374151;}' +
@@ -118,8 +119,8 @@ function(instance, properties) {
     /* rangée des mois */
     q + '.mr{display:flex;padding:4px 0 0;}' +
     q + '.ms{display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden;' +
-      'font-size:10px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.07em;padding:0 4px;}' +
-    q + '.ms + .ms{border-left:1px solid #e5e7eb;}' +
+      'font-size:11px;font-weight:700;color:#111827;padding:0 4px;}' +
+    q + '.ms + .ms{border-left:2px solid #6b7280;}' +
 
     /* semaines */
     q + '.wr{display:flex;}' +
@@ -157,13 +158,6 @@ function(instance, properties) {
   }
 
   /* ── CONSTRUCTION HTML ───────────────────────────────────────────── */
-
-  // Mois (largeur précise via dayX)
-  var mHtml = moisSpans.map(function(ms) {
-    var last   = days[ms.lastIdx];
-    var w      = dayX[ms.lastIdx] + (last.isWeekend ? CWE : CW) - dayX[ms.firstIdx];
-    return '<div class="ms" style="width:' + w + 'px">' + ms.lbl + '</div>';
-  }).join('');
 
   // Noms des jours
   var nomsHtml = parSemaine(function(j) {
@@ -209,80 +203,59 @@ function(instance, properties) {
     return '<div class="cc" style="width:' + w + 'px;color:' + col + '">' + (n || '') + '</div>';
   });
 
-  /* ── GRAPHIQUE DE CHARGE — agrégation par mois (max journalier) ── */
-  var MAX_CH_PV    = properties.max_chantiers || 10;
-  var CHART_H_PV   = 100;
-  var COL_NORMAL   = properties.couleur_normal || '#4ade80';
-  var COL_ALERTE   = properties.couleur_alerte || '#f97316';
-  var COL_DANGER   = properties.couleur_danger || '#dc2626';
-  var COL_LIMITE   = properties.couleur_limite || '#dc2626';
-  var SEUIL_ALERTE = (properties.seuil_alerte != null && properties.seuil_alerte > 0)
-                       ? Math.round(properties.seuil_alerte) : Math.round(MAX_CH_PV * 0.75);
+  /* ── GRAPHIQUE DE CHARGE — barres par jour ──────────────────────── */
+  var MAX_CH_PV  = 10;
+  var CHART_H_PV = 80;
+  var COL_NORMAL = '#4ade80';
+  var COL_ALERTE = '#f97316';
+  var COL_DANGER = '#dc2626';
+  var COL_LIMITE = '#dc2626';
+  var SEUIL_PV   = Math.round(MAX_CH_PV * 0.75);
 
-  // Compteurs par jour ouvré (même logique que dans update.js)
   var pvCounts = days.map(function(day) {
     if (day.isWeekend) return 0;
     return chantiers.filter(function(c) { return c.c && day.wi >= c.f && day.wi <= c.t; }).length;
   });
 
-  // Agrégation par mois : max journalier
-  var pvMonthAgg = [];
-  var pvCurMo    = null;
-  days.forEach(function(day, di) {
-    var key = day.y + '-' + day.m;
-    if (!pvCurMo || pvCurMo.key !== key) {
-      pvCurMo = { key: key, lbl: MOIS[day.m] + " '" + String(day.y).slice(2), max: 0 };
-      pvMonthAgg.push(pvCurMo);
-    }
-    if (!day.isWeekend && pvCounts[di] > pvCurMo.max) pvCurMo.max = pvCounts[di];
-  });
-
-  var pvNMonths = pvMonthAgg.length;
-  var pvMaxMo   = 0;
-  pvMonthAgg.forEach(function(mo) { if (mo.max > pvMaxMo) pvMaxMo = mo.max; });
-  var pvMaxY  = Math.max(MAX_CH_PV, pvMaxMo) * 1.25;
+  var pvMaxCount = 0;
+  pvCounts.forEach(function(n) { if (n > pvMaxCount) pvMaxCount = n; });
+  var pvMaxY = Math.max(MAX_CH_PV, pvMaxCount) * 1.25;
   if (pvMaxY === 0) pvMaxY = 10;
 
   function pvBarColor(n) {
-    if (n >= MAX_CH_PV)    return COL_DANGER;
-    if (n >= SEUIL_ALERTE) return COL_ALERTE;
+    if (n >= MAX_CH_PV) return COL_DANGER;
+    if (n >= SEUIL_PV)  return COL_ALERTE;
     return COL_NORMAL;
   }
 
-  var pvBars = pvMonthAgg.map(function(mo, i) {
-    var n = mo.max;
-    if (n === 0) return '<rect x="' + i + '" y="' + (CHART_H_PV - 1) + '" width="0.85" height="1" fill="#e5e7eb"/>';
-    var bh = (CHART_H_PV * n / pvMaxY).toFixed(2);
-    var by = (CHART_H_PV - CHART_H_PV * n / pvMaxY).toFixed(2);
-    return '<rect x="' + i + '" y="' + by + '" width="0.85" height="' + bh + '" fill="' + pvBarColor(n) + '"/>';
+  var pvLineTopPx = Math.round(CHART_H_PV * (1 - MAX_CH_PV / pvMaxY));
+
+  // Lookup mois → index pour le fond alterné
+  var pvDayMoIdx = [];
+  moisSpans.forEach(function(ms, mi) {
+    for (var di = ms.firstIdx; di <= ms.lastIdx; di++) pvDayMoIdx[di] = mi;
+  });
+
+  // Labels de mois en overlay
+  var pvMoLabels = moisSpans.map(function(ms) {
+    return '<span style="position:absolute;left:' + (dayX[ms.firstIdx] + 4) + 'px;top:4px;' +
+           'font-size:9px;font-weight:700;color:#6b7280;pointer-events:none;z-index:3;white-space:nowrap;">' +
+           ms.lbl + '</span>';
   }).join('');
 
-  var pvChartSvg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + pvNMonths + ' ' + CHART_H_PV + '"' +
-    ' preserveAspectRatio="none" style="width:100%;height:100%;display:block;">' +
-    pvBars + '</svg>';
-
-  // Chiffres en haut des barres (overlay HTML)
-  var pvBarLabels = pvMonthAgg.map(function(mo, i) {
-    var n = mo.max;
-    if (!n || CHART_H_PV * n / pvMaxY < 12) return '';
-    var leftPct = ((i + 0.425) / pvNMonths * 100).toFixed(2);
-    var topPct  = ((1 - n / pvMaxY) * 100 + 2).toFixed(2);
-    return '<span style="position:absolute;left:' + leftPct + '%;top:' + topPct + '%;' +
-           'transform:translateX(-50%);font-size:8px;font-weight:700;' +
-           'color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.5);line-height:1;">' + n + '</span>';
-  }).join('');
-
-  // Ligne rouge max_chantiers (overlay HTML)
-  var pvLineTopPct = ((1 - MAX_CH_PV / pvMaxY) * 100).toFixed(2);
-  var pvRedLine = '<div style="position:absolute;left:0;right:0;top:' + pvLineTopPct + '%;' +
-                  'height:2px;background:' + COL_LIMITE + ';pointer-events:none;z-index:2;"></div>';
-
-  // Labels centrés sous chaque barre
-  var pvMonths = pvMonthAgg.map(function(mo, i) {
-    var pct = ((i + 0.425) / pvNMonths * 100).toFixed(2);
-    return '<span style="position:absolute;left:' + pct + '%;transform:translateX(-50%);font-size:9px;' +
-           'color:#9ca3af;white-space:nowrap;line-height:22px;">' + mo.lbl + '</span>';
-  }).join('');
+  // Rangée graphe par jour
+  var pvChartRow = parSemaine(function(j) {
+    var w    = j.isWeekend ? CWE : CW;
+    var di   = days.indexOf(j);
+    var n    = pvCounts[di] || 0;
+    var bh   = (!j.isWeekend && n > 0) ? Math.round(CHART_H_PV * n / pvMaxY) : 0;
+    var bgMo = (pvDayMoIdx[di] % 2 === 0) ? 'rgba(0,0,0,0.03)' : 'transparent';
+    return '<div style="width:' + w + 'px;height:' + CHART_H_PV + 'px;display:flex;align-items:flex-end;justify-content:center;background:' + bgMo + ';">' +
+           (bh > 0
+             ? '<div style="width:70%;height:' + bh + 'px;background:' + pvBarColor(n) + ';border-radius:2px 2px 0 0;"></div>'
+             : '') +
+           '</div>';
+  });
 
   $c.html(
     '<div class="' + pfx + '" style="height:100%">' +
@@ -296,6 +269,7 @@ function(instance, properties) {
           '<input type="text" placeholder="nom chantier, nom client…" disabled>' +
         '</div>' +
         '<span class="tot">Total : 76</span>' +
+        '<button class="aj" disabled>Aujourd\'hui</button>' +
         '<div class="sf">' +
           '<svg width="12" height="12" fill="none" stroke="#9ca3af" stroke-width="2" viewBox="0 0 24 24">' +
             '<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>' +
@@ -309,24 +283,6 @@ function(instance, properties) {
         '</div>' +
       '</div>' +
 
-      '<div style="display:flex;flex-shrink:0;height:120px;overflow:hidden;border-bottom:2px solid #e5e7eb;background:#fff;">' +
-        '<div style="width:' + LW + 'px;flex-shrink:0;position:relative;border-right:2px solid #e5e7eb;padding-bottom:22px;">' +
-          '<span style="position:absolute;right:8px;top:' + pvLineTopPct + '%;' +
-          'transform:translateY(-50%);font-size:9px;font-weight:700;color:' + COL_LIMITE + ';line-height:1;">' +
-          MAX_CH_PV + '</span>' +
-        '</div>' +
-        '<div style="flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;">' +
-          '<div style="flex:1;overflow:hidden;min-height:0;position:relative;">' +
-            pvChartSvg +
-            '<div style="position:absolute;inset:0;pointer-events:none;">' + pvBarLabels + '</div>' +
-            pvRedLine +
-          '</div>' +
-          '<div style="height:22px;flex-shrink:0;position:relative;overflow:hidden;border-top:1px solid #f3f4f6;">' +
-            pvMonths +
-          '</div>' +
-        '</div>' +
-      '</div>' +
-
       '<div class="bd">' +
         '<div class="lp">' +
           '<div class="lh"></div>' +
@@ -334,7 +290,11 @@ function(instance, properties) {
         '</div>' +
         '<div class="rp">' +
           '<div class="hd">' +
-            '<div class="mr">' + mHtml    + '</div>' +
+            '<div style="position:relative;height:' + CHART_H_PV + 'px;background:#fafafa;border-bottom:1px solid #eeeff1;">' +
+              '<div class="wr">' + pvChartRow + '</div>' +
+              pvMoLabels +
+              '<div style="position:absolute;left:0;right:0;top:' + pvLineTopPx + 'px;height:2px;background:' + COL_LIMITE + ';pointer-events:none;z-index:2;"></div>' +
+            '</div>' +
             '<div class="wr">' + nomsHtml + '</div>' +
             '<div class="wr">' + numsHtml + '</div>' +
             '<div class="cr">' + cntHtml  + '</div>' +

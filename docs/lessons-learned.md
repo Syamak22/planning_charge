@@ -1,9 +1,5 @@
 # Bubble Plugin — Leçons apprises (planning_hebdo)
 
-Ces apprentissages sont issus de la construction du plugin `planning_hebdo`. Ils s'appliquent à tout futur plugin Bubble complexe.
-
----
-
 ## 1. Propriétés Bubble et champs relationnels
 
 ### Le piège des relations
@@ -180,7 +176,70 @@ var vehiculeIds = instance.data.conducteurToVehiculeIds[tag._resourceId] || [];
 
 ---
 
-## 10. `_bubbleObject` et `_resourceId` sur les tags DOM
+## 10. Option Sets dans les plugins Bubble — comportement réel
+
+### Les items OS sont des plain objects JS, pas des Bubble objects
+
+Quand une property de type `list of [Option Set]` est passée au plugin, les items **ne sont pas** des objets Bubble avec une méthode `.get()`. Ce sont des **plain JavaScript objects** avec des propriétés directes.
+
+```js
+// ✓ Les items OS ont bien .get() et .listProperties()
+var label = col.get('display');  // ← seule propriété disponible
+
+// ❌ get('_id') retourne null — pas d'identifiant stable exposé
+var id = col.get('_id');  // → null
+```
+
+**Important** : Bubble n'expose que `display` sur les items OS via l'API plugin. Si rename-safety est nécessaire, ajouter un custom field `code` (text) sur l'OS dans Bubble et utiliser `col.get('code')` comme clé stable.
+
+### La liste elle-même peut être un plain array
+
+Contrairement aux listes de Things, la liste d'OS peut arriver comme un **tableau JS natif** (`src.length` est un nombre, pas une fonction).
+
+```js
+// readList() doit gérer les deux cas :
+function readList(src) {
+  if (!src) { return []; }
+  if (typeof src.length === 'function') {
+    var len = src.length();
+    return len === 0 ? [] : src.get(0, len);  // Bubble list object (Things)
+  }
+  if (typeof src.length === 'number') {
+    return Array.prototype.slice.call(src);    // plain array (OS)
+  }
+  return [];
+}
+```
+
+### Pattern robuste pour lire les items OS
+
+```js
+for (var ki = 0; ki < colonneItems.length; ki++) {
+  var col = colonneItems[ki];
+  if (!col) { continue; }
+  var colId, colLbl;
+  if (typeof col.get === 'function') {
+    colId  = col.get('_id') || '';      // Bubble object (Things)
+    colLbl = col.get('display') || colId;
+  } else if (typeof col === 'string') {
+    colId = col; colLbl = col;           // list of text
+  } else {
+    colId  = String(col._id || '');     // plain object (OS)
+    colLbl = String(col.display || colId);
+  }
+  if (!colId) { colId = colLbl; }       // fallback si _id vide
+  if (colId) { colonnes.push({ id: colId, label: colLbl }); }
+}
+```
+
+### Clé stable vs display
+
+Bubble ne fournit **aucun `_id` stable** sur les items OS via l'API plugin (`get('_id')` → `null`). La seule propriété disponible est `display`.
+→ Si rename-safety est critique, ajouter un champ `code` (text) à l'OS dans Bubble et l'utiliser comme clé : `col.get('code')`.
+
+---
+
+## 11. `_bubbleObject` et `_resourceId` sur les tags DOM
 
 Pour permettre aux event handlers de retrouver l'objet Bubble associé à un élément DOM, stocker les références directement sur le nœud DOM :
 

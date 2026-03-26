@@ -194,6 +194,16 @@ reader.readAsDataURL(blob);
 
 ---
 
+## IDE / Fausse alerte ESLint
+
+**Tous les fichiers plugin Bubble déclenchent une erreur `"Identifier expected"` à la ligne 1, col 9.** C'est une fausse alerte permanente — ne pas la corriger.
+
+**Cause :** Les fichiers commencent par `function(instance, ...) {` (fonction anonyme sans `export`). C'est la syntaxe attendue par Bubble, mais le linter TypeScript/ESLint de l'IDE ne sait pas l'interpréter sans contexte de module.
+
+Pour supprimer le faux positif localement, ajouter un `.eslintignore` ou un `jsconfig.json` avec `"checkJs": false`.
+
+---
+
 ## Date de dernière mise à jour
 
-2026-02-26 — basé sur le plugin `planning_hebdo` (initialize2.js + update2.js)
+2026-03-02 — planning_charge
