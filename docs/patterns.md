@@ -240,3 +240,37 @@ var vehiculeIds = instance.data.conducteurToVehiculeIds[personnelId] || [];
 - `update.js` lit les données Bubble, met à jour le DOM via `instance.data`
 - Ne jamais recréer le DOM dans `update.js` si ce n'est pas nécessaire (hash check)
 - Les fonctions helpers (`createTag`, `formatDate`, etc.) sont créées dans `initialize.js` et stockées dans `instance.data` pour être disponibles dans `update.js`
+
+---
+
+## 9bis. Séparation « structure » (initialize.js) / « data » (update.js) — exemple `renderPlanning`
+
+Sur les plugins avec un rendu complexe (calendrier, Gantt...), pousser le pattern §9 plus loin : **toute la logique de construction visuelle vit dans une seule fonction définie dans `initialize.js`**, et `update.js` ne fait que préparer des données propres puis l'appeler.
+
+**Dans `initialize.js` :**
+```js
+instance.data.renderPlanning = function(chantiersAll, childrenMap, chantiers, countableItems, offSet, cfg) {
+  // Toute la structure : calcul des colonnes/jours, positions X/Y,
+  // construction du DOM (lignes, items, séparateurs de mois, graphe de charge),
+  // écriture dans instance.data.totSpan / instance.data.calGrid / etc.
+};
+```
+
+**Dans `update.js` :**
+```js
+// 1. Lire les properties, parser les objets Bubble (dates, relations, hiérarchie parent/enfant)
+var chantiersAll = chantiersRaw.map(parseChantier);
+// 2. Séparer parents / enfants, filtrer les "feuilles" comptables
+var chantiers      = chantiersAll.filter(function(c) { return !c.parentId; });
+var countableItems = chantiersAll.filter(function(c) { return !(childrenMap[c.id] && childrenMap[c.id].length); });
+// 3. Hash check, puis appel de la structure avec la donnée prête à consommer
+instance.data.renderPlanning(chantiersAll, childrenMap, chantiers, countableItems, offSet, cfg);
+```
+
+**Pourquoi séparer ainsi :**
+- `initialize.js` ne connaît que la *forme* du rendu (comment dessiner une ligne, un item, un total) — jamais le format brut des objets Bubble (`.get(fieldX)`, relations, `_id`...).
+- `update.js` ne connaît que la *donnée* — jamais comment elle est dessinée à l'écran.
+- Un changement de règle de comptage (ex. § « total en haut à droite ») se fait presque toujours **côté update.js** (quel array on passe), rarement côté `renderPlanning` (comment on l'affiche) — sauf si l'affichage lui-même change.
+- Ça permet de réutiliser `renderPlanning` pour un re-render pur (ex. `maybeExtendRange` → `instance.data.reRender()`) sans re-parser les objets Bubble à chaque fois.
+
+**Piège à éviter :** ne pas laisser `update.js` recalculer une donnée dérivée (ex. `countableItems`) à deux endroits différents avec des règles différentes — un seul filtre, une seule source de vérité, passée telle quelle à `renderPlanning`.

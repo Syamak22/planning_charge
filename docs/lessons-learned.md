@@ -3,6 +3,7 @@
 ## 1. Propriétés Bubble et champs relationnels
 
 ### Le piège des relations
+
 Quand une property de type `data_type` référence un type Bubble dont les objets ont des **champs relationnels** (ex. un Véhicule a un champ "conducteur" de type User), le plugin ne peut PAS proposer un sélecteur de champ automatique pour ces relations.
 
 **Solution :** toujours prévoir une **property de type Text** séparée pour chaque champ relationnel à accéder, dans laquelle le développeur saisit manuellement le nom exact du field Bubble.
@@ -18,13 +19,15 @@ var c1 = vehicleObj.get(fieldConducteur1);  // → objet User ou null
 ```
 
 ### Tester si une valeur est un objet Bubble
+
 ```js
-if (c1 && typeof c1.get === 'function') {
-  var userId = c1.get('_id');
+if (c1 && typeof c1.get === "function") {
+  var userId = c1.get("_id");
 }
 ```
 
 ### Relation single vs liste
+
 - **Single** : `obj.get('field')` → objet Bubble directement
 - **Liste** : `obj.get('field')` → list object avec `.length()` et `.get()`
 - Tester : `typeof ref.length === 'function'` → c'est une liste
@@ -33,11 +36,11 @@ if (c1 && typeof c1.get === 'function') {
 
 ## 2. Synchrone vs asynchrone
 
-| Contexte | `.length()` | `.get()` | `obj.get()` |
-|---|---|---|---|
-| `update.js` (client) | synchrone ✓ | synchrone ✓ | synchrone ✓ |
-| `initialize.js` (client) | synchrone ✓ | synchrone ✓ | synchrone ✓ |
-| Server-side action | **async** → `await` | **async** → `await` | **async** → `await` |
+| Contexte                 | `.length()`         | `.get()`            | `obj.get()`         |
+| ------------------------ | ------------------- | ------------------- | ------------------- |
+| `update.js` (client)     | synchrone ✓         | synchrone ✓         | synchrone ✓         |
+| `initialize.js` (client) | synchrone ✓         | synchrone ✓         | synchrone ✓         |
+| Server-side action       | **async** → `await` | **async** → `await` | **async** → `await` |
 
 ---
 
@@ -48,11 +51,15 @@ Sur un plugin avec beaucoup de données (chantiers, personnel, véhicules, plann
 **Pattern adopté :** calculer un hash string de toutes les données lues → si identique au précédent → `return` immédiat.
 
 ```js
-var hash = 'date:' + dayDate;
-hash += '|personnel:' + Object.keys(personnelById).length;
-hash += '|planning:' + planKeys.map(k => k + '=' + JSON.stringify(plan[k])).join('|');
+var hash = "date:" + dayDate;
+hash += "|personnel:" + Object.keys(personnelById).length;
+hash +=
+  "|planning:" +
+  planKeys.map((k) => k + "=" + JSON.stringify(plan[k])).join("|");
 
-if (instance.data.lastMasterHash === hash) { return; }
+if (instance.data.lastMasterHash === hash) {
+  return;
+}
 instance.data.lastMasterHash = hash;
 ```
 
@@ -65,8 +72,11 @@ instance.data.lastMasterHash = hash;
 `instance.publishState()` peut déclencher un re-render Bubble qui rappelle `update.js` immédiatement → boucle infinie.
 
 **Protection obligatoire :**
+
 ```js
-if (instance.data.isUpdating) { return; }
+if (instance.data.isUpdating) {
+  return;
+}
 instance.data.isUpdating = true;
 try {
   // ... tout le code update ...
@@ -80,18 +90,28 @@ try {
 ## 5. Drag & Drop — pièges courants
 
 ### `dragData = null` avant `dragend`
+
 Le handler `drop` peut mettre `dragData` à `null` avant que `dragend` se déclenche. Si `dragend` dépend de `dragData`, il ne trouvera rien.
 
 **Solution :** retirer toutes les classes CSS (`ph-dragging`, etc.) AVANT de nullifier `dragData` :
+
 ```js
 // ❌ FAUX
-if (isFromPool) { dragData = null; return; }
+if (isFromPool) {
+  dragData = null;
+  return;
+}
 
 // ✓ CORRECT
-if (isFromPool) { dragData.tag.classList.remove('ph-dragging'); dragData = null; return; }
+if (isFromPool) {
+  dragData.tag.classList.remove("ph-dragging");
+  dragData = null;
+  return;
+}
 ```
 
 ### Mise à jour UI immédiate
+
 Ne pas attendre le prochain cycle `update.js` pour mettre à jour des compteurs ou états visuels après un drag. Les mettre à jour directement dans les handlers `drop` et `click`.
 
 ---
@@ -99,17 +119,28 @@ Ne pas attendre le prochain cycle `update.js` pour mettre à jour des compteurs 
 ## 6. CSS — pièges courants
 
 ### `currentColor` et `color` sur le même élément
+
 ```css
 /* ❌ FAUX : background: currentColor lit la couleur de l'élément lui-même */
-.badge { background: currentColor; color: white !important; }
+.badge {
+  background: currentColor;
+  color: white !important;
+}
 /* → currentColor = white → badge blanc sur blanc */
 
 /* ✓ CORRECT : hardcoder la couleur de fond */
-.badge-blue { background: #3B82F6; color: white; }
-.badge-green { background: #10B981; color: white; }
+.badge-blue {
+  background: #3b82f6;
+  color: white;
+}
+.badge-green {
+  background: #10b981;
+  color: white;
+}
 ```
 
 ### `@keyframes` doivent être scopés à l'instance
+
 ```css
 /* ❌ peut conflitter entre instances */
 @keyframes pulse { ... }
@@ -120,6 +151,7 @@ Ne pas attendre le prochain cycle `update.js` pour mettre à jour des compteurs 
 ```
 
 ### `opacity` sur un tag "indisponible" écrase tout
+
 Utiliser `opacity: 0.5` avec une combinaison de `text-decoration: line-through` + couleurs neutres plutôt qu'une opacity seule (qui affecte aussi les enfants).
 
 ---
@@ -127,6 +159,7 @@ Utiliser `opacity: 0.5` avec une combinaison de `text-decoration: line-through` 
 ## 7. Architecture `instance.data`
 
 **Ce qu'on stocke dans `instance.data` :**
+
 - Références DOM (container, pools, zones, boutons)
 - Fonctions helpers (`createTag`, `formatDate`, `createRow`)
 - Lookups calculés (`conducteurToVehiculeIds`, `planningMap`)
@@ -134,6 +167,7 @@ Utiliser `opacity: 0.5` avec une combinaison de `text-decoration: line-through` 
 - Compteurs/badges DOM (`countPersonnel`, `countVehicule`)
 
 **Ce qu'on ne stocke PAS :**
+
 - Les données Bubble brutes (on les relit à chaque update.js)
 - Des copies du state Bubble (source de désynchronisation)
 
@@ -143,13 +177,13 @@ Utiliser `opacity: 0.5` avec une combinaison de `text-decoration: line-through` 
 
 Pour un plugin complexe avec beaucoup de propriétés, organiser par préfixe :
 
-| Préfixe | Rôle | Exemple |
-|---|---|---|
-| `data_type_` | Liste d'objets Bubble | `data_type_personnel` |
-| `name_display_` | Champ texte à afficher | `name_display_personnel` |
-| `field_` | Nom de champ relationnel | `field_conducteur_1_vehicule` |
-| `date_` / `field_date_` | Champ date | `date_debut_chantier` |
-| Sans préfixe | Config layout/UI | `resources_panel_percent`, `chantier_col_width` |
+| Préfixe                 | Rôle                     | Exemple                                         |
+| ----------------------- | ------------------------ | ----------------------------------------------- |
+| `data_type_`            | Liste d'objets Bubble    | `data_type_personnel`                           |
+| `name_display_`         | Champ texte à afficher   | `name_display_personnel`                        |
+| `field_`                | Nom de champ relationnel | `field_conducteur_1_vehicule`                   |
+| `date_` / `field_date_` | Champ date               | `date_debut_chantier`                           |
+| Sans préfixe            | Config layout/UI         | `resources_panel_percent`, `chantier_col_width` |
 
 ---
 
@@ -162,9 +196,11 @@ Quand on veut "tous les véhicules dont X est conducteur", itérer sur tous les 
 var conducteurToVehiculeIds = {};
 for (var vid in vehiculeById) {
   var c1 = vehiculeById[vid].object.get(fieldConducteur1);
-  if (c1 && typeof c1.get === 'function') {
-    var cid = c1.get('_id');
-    if (!conducteurToVehiculeIds[cid]) { conducteurToVehiculeIds[cid] = []; }
+  if (c1 && typeof c1.get === "function") {
+    var cid = c1.get("_id");
+    if (!conducteurToVehiculeIds[cid]) {
+      conducteurToVehiculeIds[cid] = [];
+    }
     conducteurToVehiculeIds[cid].push(vid);
   }
 }
@@ -184,10 +220,10 @@ Quand une property de type `list of [Option Set]` est passée au plugin, les ite
 
 ```js
 // ✓ Les items OS ont bien .get() et .listProperties()
-var label = col.get('display');  // ← seule propriété disponible
+var label = col.get("display"); // ← seule propriété disponible
 
 // ❌ get('_id') retourne null — pas d'identifiant stable exposé
-var id = col.get('_id');  // → null
+var id = col.get("_id"); // → null
 ```
 
 **Important** : Bubble n'expose que `display` sur les items OS via l'API plugin. Si rename-safety est nécessaire, ajouter un custom field `code` (text) sur l'OS dans Bubble et utiliser `col.get('code')` comme clé stable.
@@ -199,13 +235,15 @@ Contrairement aux listes de Things, la liste d'OS peut arriver comme un **tablea
 ```js
 // readList() doit gérer les deux cas :
 function readList(src) {
-  if (!src) { return []; }
-  if (typeof src.length === 'function') {
-    var len = src.length();
-    return len === 0 ? [] : src.get(0, len);  // Bubble list object (Things)
+  if (!src) {
+    return [];
   }
-  if (typeof src.length === 'number') {
-    return Array.prototype.slice.call(src);    // plain array (OS)
+  if (typeof src.length === "function") {
+    var len = src.length();
+    return len === 0 ? [] : src.get(0, len); // Bubble list object (Things)
+  }
+  if (typeof src.length === "number") {
+    return Array.prototype.slice.call(src); // plain array (OS)
   }
   return [];
 }
@@ -216,19 +254,26 @@ function readList(src) {
 ```js
 for (var ki = 0; ki < colonneItems.length; ki++) {
   var col = colonneItems[ki];
-  if (!col) { continue; }
+  if (!col) {
+    continue;
+  }
   var colId, colLbl;
-  if (typeof col.get === 'function') {
-    colId  = col.get('_id') || '';      // Bubble object (Things)
-    colLbl = col.get('display') || colId;
-  } else if (typeof col === 'string') {
-    colId = col; colLbl = col;           // list of text
+  if (typeof col.get === "function") {
+    colId = col.get("_id") || ""; // Bubble object (Things)
+    colLbl = col.get("display") || colId;
+  } else if (typeof col === "string") {
+    colId = col;
+    colLbl = col; // list of text
   } else {
-    colId  = String(col._id || '');     // plain object (OS)
+    colId = String(col._id || ""); // plain object (OS)
     colLbl = String(col.display || colId);
   }
-  if (!colId) { colId = colLbl; }       // fallback si _id vide
-  if (colId) { colonnes.push({ id: colId, label: colLbl }); }
+  if (!colId) {
+    colId = colLbl;
+  } // fallback si _id vide
+  if (colId) {
+    colonnes.push({ id: colId, label: colLbl });
+  }
 }
 ```
 
@@ -245,10 +290,46 @@ Pour permettre aux event handlers de retrouver l'objet Bubble associé à un él
 
 ```js
 var tag = instance.data.createTag(name, type, removable);
-tag._bubbleObject = bubbleObj;   // objet Bubble complet
-tag._resourceId   = id;          // _id string pour les lookups
+tag._bubbleObject = bubbleObj; // objet Bubble complet
+tag._resourceId = id; // _id string pour les lookups
 
 // Dans les handlers :
-var obj = tag._bubbleObject;     // → passer à publishState directement
-var id  = tag._resourceId;       // → chercher dans les maps
+var obj = tag._bubbleObject; // → passer à publishState directement
+var id = tag._resourceId; // → chercher dans les maps
 ```
+
+---
+
+## 12. Hauteur dynamique du canvas
+
+Bubble impose une hauteur fixe sur les éléments plugin. Avec "fit height to content", le plugin s'étend sur tout le contenu du DOM, créant un espace vide en bas de l'écran sur les grands écrans.
+
+**Solution :** dans `initialize.js`, calculer la hauteur disponible (`window.innerHeight - rect.top - marge`) et l'appliquer directement sur le canvas. Bubble avec "fit height to content" suit alors cette hauteur.
+
+```js
+function setCanvasHeight() {
+  var rect = instance.canvas[0].getBoundingClientRect();
+  var h = Math.floor(window.innerHeight - rect.top - 16); // 16px marge basse
+  if (h > 100) {
+    instance.canvas[0].style.height = h + "px";
+  }
+}
+setCanvasHeight();
+window.addEventListener("resize", setCanvasHeight);
+```
+
+Placer juste avant `instance.data.initialized = true;`.
+
+**Dans Bubble :** passer l'élément en "fit height to content".
+
+**Note :** `rect.top` dépend de la position du plugin dans la page au moment du chargement. Si le plugin est dans un groupe avec un header variable, ajuster la marge en conséquence.
+
+Quand le plugin est caché (display:none), getBoundingClientRect() retourne top = 0. Donc le calcul window.innerHeight - 0 - 16 donne une hauteur égale à presque toute la fenêtre — mais comme le plugin n'est pas visible, ça ne se voit pas.
+
+Quand Bubble l'affiche, le plugin a déjà cette mauvaise hauteur stockée. La vraie position (rect.top) n'a jamais été calculée au bon moment.
+
+Le resize corrige tout par hasard : il déclenche setCanvasHeight() alors que le plugin est enfin visible → rect.top est correct → la hauteur est juste.
+
+Ce qu'on a fait : appeler setCanvasHeight() depuis update.js, qui s'exécute à chaque render Bubble — y compris celui qui rend le plugin visible. C'est le seul moment où les coordonnées sont fiables.
+
+---
