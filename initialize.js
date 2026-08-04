@@ -58,10 +58,11 @@ function(instance, context) {
     s + '.goto-btn.disabled{opacity:.3;cursor:default;pointer-events:none;}',
 
     /* panneau droit */
-    s + '.rp{flex:1;overflow:auto;min-width:0;background:#fff;position:relative;}',
-    s + '.rp::-webkit-scrollbar{height:4px;}',
+    s + '.rp{flex:1;overflow:auto;min-width:0;background:#fff;position:relative;cursor:grab;}',
+    s + '.rp:active{cursor:grabbing;}',
+    s + '.rp::-webkit-scrollbar{width:6px;height:6px;}',
     s + '.rp::-webkit-scrollbar-track{background:#f1f1f1;}',
-    s + '.rp::-webkit-scrollbar-thumb{background:#e91e8c;border-radius:2px;}',
+    s + '.rp::-webkit-scrollbar-thumb{background:#e91e8c;border-radius:3px;}',
     s + '.mo-seps{position:absolute;top:0;left:0;width:0;height:0;pointer-events:none;z-index:6;}',
     s + '.mo-seps .ln{position:absolute;top:0;width:1px;background:#9ca3af;}',
 
@@ -90,6 +91,7 @@ function(instance, context) {
     /* rangée des compteurs (mise en avant : c\'est la donnée clé de la charge) */
     s + '.cr{display:flex;background:#fafafa;padding:4px 0;border-top:1px solid #eeeff1;}',
     s + '.cc{flex-shrink:0;text-align:center;font-size:13px;font-weight:800;line-height:1.1;}',
+    s + '.cc[data-tip]{cursor:help;}',
 
     /* rangée des mois (toujours visible, indépendante du graphique) */
     s + '.mrow{position:relative;height:18px;background:#fff;border-bottom:1px solid #eeeff1;}',
@@ -120,7 +122,7 @@ function(instance, context) {
     s + '.item.group .grp-accent{position:absolute;left:0;top:0;bottom:0;width:4px;}',
 
     /* tooltip (appendé à document.body → règle NON scopée à la racine du plugin) */
-    '.' + id + '-tip{position:fixed;background:#1e293b;color:#fff;font-size:11px;font-weight:600;padding:5px 10px;border-radius:5px;max-width:250px;white-space:normal;word-break:break-word;pointer-events:none;z-index:99999;opacity:0;transition:opacity .08s ease;box-shadow:0 4px 12px rgba(0,0,0,.18);line-height:1.4;font-family:inherit;}',
+    '.' + id + '-tip{position:fixed;background:#1e293b;color:#fff;font-size:11px;font-weight:600;padding:5px 10px;border-radius:5px;max-width:320px;white-space:pre-line;word-break:break-word;pointer-events:none;z-index:99999;opacity:0;transition:opacity .08s ease;box-shadow:0 4px 12px rgba(0,0,0,.18);line-height:1.5;font-family:inherit;}',
 
     /* loader */
     s + '.ld{position:absolute;inset:0;background:rgba(255,255,255,.9);display:flex;align-items:center;justify-content:center;z-index:20;}',
@@ -304,11 +306,17 @@ function(instance, context) {
     var totalW = curX;
 
     /* ── Compteurs de charge = nombre d'équipes présentes (jours ouvrés), basé sur chef_date ── */
+    var chantierNameById = {};
+    chantiersAll.forEach(function(c) { chantierNameById[c.id] = c.nom; });
     var counts = days.map(function() { return 0; });
+    var countDetails = days.map(function() { return []; }); // debug : détail des chefs comptés par jour
     chefDates.forEach(function(cd) {
       days.forEach(function(day, di) {
         if (day.isWeekend || day.isOff) return;
-        if (day.d >= cd.deb && day.d <= cd.fin) { counts[di]++; }
+        if (day.d >= cd.deb && day.d <= cd.fin) {
+          counts[di]++;
+          countDetails[di].push((cd.chefName || '(sans chef)') + ' — ' + (chantierNameById[cd.chantierId] || '?'));
+        }
       });
     });
 
@@ -355,7 +363,9 @@ function(instance, context) {
       var n   = counts[di];
       var col = n >= maxCh ? '#d32f2f' : n > 0 ? '#9ca3af' : '#d9dbe0';
       var txt = n > 0 ? n : '';
-      return '<div class="cc" style="width:' + w + 'px;color:' + col + '">' + txt + '</div>';
+      var tip = countDetails[di].length ? countDetails[di].map(function(t) { return '- ' + t; }).join('\n') : '';
+      return '<div class="cc" style="width:' + w + 'px;color:' + col + '"' +
+        (tip ? ' data-tip="' + tip.replace(/"/g, '&quot;') + '"' : '') + '>' + txt + '</div>';
     });
 
     /* Rangée graphe par jour */
@@ -637,28 +647,32 @@ function(instance, context) {
     if (instance.data._lastArgs) { instance.data.renderPlanning.apply(null, instance.data._lastArgs); }
   };
 
-  /* ── Tooltip ──────────────────────────────────────────────────────── */
+  /* ── Tooltip (partagé entre la grille des items et l'en-tête, ex: détail du compteur d'équipes) ── */
   var tip = document.createElement('div');
   tip.className = id + '-tip';
   document.body.appendChild(tip);
-  instance.data.calGrid.addEventListener('mouseover', function(e) {
-    var el = e.target && e.target.closest && e.target.closest('[data-tip]');
-    if (!el) return;
-    tip.textContent = el.getAttribute('data-tip');
-    tip.style.opacity = '1';
-  });
-  instance.data.calGrid.addEventListener('mousemove', function(e) {
-    tip.style.left = (e.clientX + 14) + 'px';
-    tip.style.top  = (e.clientY - 36) + 'px';
-  });
-  instance.data.calGrid.addEventListener('mouseout', function(e) {
-    var el = e.target && e.target.closest && e.target.closest('[data-tip]');
-    if (!el) return;
-    // Ignore les mouseout internes (ex: on quitte le <span> mais on reste dans l'item)
-    if (el.contains(e.relatedTarget)) return;
-    tip.style.opacity = '0';
-  });
-  instance.data.calGrid.addEventListener('mouseleave', function() { tip.style.opacity = '0'; });
+  function bindTooltip(el) {
+    el.addEventListener('mouseover', function(e) {
+      var t = e.target && e.target.closest && e.target.closest('[data-tip]');
+      if (!t) return;
+      tip.textContent = t.getAttribute('data-tip');
+      tip.style.opacity = '1';
+    });
+    el.addEventListener('mousemove', function(e) {
+      tip.style.left = (e.clientX + 14) + 'px';
+      tip.style.top  = (e.clientY - 36) + 'px';
+    });
+    el.addEventListener('mouseout', function(e) {
+      var t = e.target && e.target.closest && e.target.closest('[data-tip]');
+      if (!t) return;
+      // Ignore les mouseout internes (ex: on quitte le <span> mais on reste dans l'item)
+      if (t.contains(e.relatedTarget)) return;
+      tip.style.opacity = '0';
+    });
+    el.addEventListener('mouseleave', function() { tip.style.opacity = '0'; });
+  }
+  bindTooltip(instance.data.calGrid);
+  bindTooltip(instance.data.calHdr);
 
   /* ── Changement d'année : custom state + event Bubble (pour borner la recherche serveur),
      jamais lu en retour par le plugin → pas de risque de boucle cyclique. ── */
@@ -868,6 +882,42 @@ function(instance, context) {
     e.preventDefault();
     instance.data.rightPnl.scrollTop += e.deltaY;
   }, { passive: false });
+
+  /* ── Drag pour naviguer (clic maintenu + déplacement, hors item/bouton) ──
+     Un seuil de quelques pixels distingue un simple clic (sélection, highlight)
+     d'un vrai drag, pour ne pas casser les interactions existantes. ── */
+  (function() {
+    var DRAG_THRESHOLD = 4;
+    var pan = null; // { startX, startY, scrollLeft, scrollTop, moved }
+    instance.data.rightPnl.addEventListener('mousedown', function(e) {
+      if (e.button !== 0) return;
+      var t = e.target;
+      if (t.closest && t.closest('.item, button, input')) return;
+      pan = {
+        startX: e.clientX, startY: e.clientY,
+        scrollLeft: instance.data.rightPnl.scrollLeft,
+        scrollTop:  instance.data.rightPnl.scrollTop,
+        moved: false,
+      };
+    });
+    window.addEventListener('mousemove', function(e) {
+      if (!pan) return;
+      var dx = e.clientX - pan.startX;
+      var dy = e.clientY - pan.startY;
+      if (!pan.moved) {
+        if (Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) return;
+        pan.moved = true;
+        document.body.style.userSelect = 'none';
+      }
+      instance.data.rightPnl.scrollLeft = pan.scrollLeft - dx;
+      instance.data.rightPnl.scrollTop  = pan.scrollTop - dy;
+      e.preventDefault();
+    });
+    window.addEventListener('mouseup', function() {
+      if (pan && pan.moved) { document.body.style.userSelect = ''; }
+      pan = null;
+    });
+  })();
 
   /* ── Filtre recherche textuelle ─────────────────────────────────────
      Le filtrage se fait dans renderPlanning (sur instance.data.searchQuery),
