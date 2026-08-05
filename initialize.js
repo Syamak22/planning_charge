@@ -184,7 +184,8 @@ function(instance, context) {
   instance.data.selectedYear    = null;  // seedé au 1er rendu (année en cours), fenêtre fixe d'un an
 
   /* ── Constantes calendrier (statiques, indépendantes des properties Bubble) ── */
-  var CW          = 22;   // largeur cellule jour ouvré (px)
+  var VISIBLE_DAYS = 31;  // nb de jours visibles à l'écran (CW recalculé pour tenir dans la largeur du panneau)
+  var CW          = 22;   // largeur cellule jour ouvré (px) — valeur de secours avant 1er calcul dynamique
   var CWE         = 22;   // largeur cellule week-end (px)
   var CG          = 3;    // gap inter-cellules (px)
   var WS          = 8;    // séparateur de semaines (px)
@@ -291,6 +292,15 @@ function(instance, context) {
         moisSpans.push({ k: k, lbl: MOIS[day.m] + ' ' + String(day.y).slice(2), fi: idx, li: idx });
       moisSpans[moisSpans.length - 1].li = idx;
     });
+
+    // Largeur de cellule dynamique : ~VISIBLE_DAYS jours doivent tenir dans la largeur du panneau
+    // (approximation : 4 séparateurs de semaine dans une fenêtre de 31 jours)
+    var panelW = instance.data.rightPnl.clientWidth;
+    if (panelW > 0) {
+      var cw = Math.floor((panelW - (VISIBLE_DAYS - 1) * CG - 4 * WS) / VISIBLE_DAYS);
+      CW  = Math.max(4, cw);
+      CWE = CW;
+    }
 
     // Positions X + largeurs de chaque jour
     var dayX = [], dayW = [], curX = 0;
@@ -703,6 +713,13 @@ function(instance, context) {
       instance.data.reRender();
     }
     instance.data.rightPnl.scrollLeft = instance.data.todayScrollX || 0;
+  });
+
+  /* ── Redimensionnement fenêtre : recalcule CW pour garder ~31 jours visibles ── */
+  var resizeTO = null;
+  window.addEventListener('resize', function() {
+    clearTimeout(resizeTO);
+    resizeTO = setTimeout(function() { instance.data.reRender(); }, 150);
   });
 
   /* ── Flèches navigation année ─────────────────────────────────────── */
