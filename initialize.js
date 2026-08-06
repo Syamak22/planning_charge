@@ -36,7 +36,9 @@ function(instance, context) {
     s + '.bd{display:flex;flex:1;overflow:hidden;position:relative;}',
 
     /* panneau gauche (largeur via CSS var) */
-    s + '.lp{width:var(--pc-lw,296px);flex-shrink:0;display:flex;flex-direction:column;border-right:2px solid #e2e8f0;background:#fff;z-index:3;}',
+    s + '.lp{width:var(--pc-lw,296px);flex-shrink:0;display:flex;flex-direction:column;border-right:2px solid #e2e8f0;background:#fff;z-index:3;position:relative;}',
+    s + '.lp-rz{position:absolute;top:0;right:-3px;width:6px;height:100%;cursor:col-resize;z-index:4;}',
+    s + '.lp-rz:hover,.lp-rz.rz-active{background:rgba(233,30,140,0.25);}',
     s + '.lh{flex-shrink:0;border-bottom:2px solid #e2e8f0;position:relative;}',
     s + '.pl{overflow-y:hidden;flex:1;}',           /* scroll piloté par .rp */
     s + '.pr{display:flex;align-items:center;height:30px;padding:0 12px 0 10px;border-bottom:1px solid #f1f5f9;font-size:11.5px;color:#374151;cursor:pointer;gap:5px;}',
@@ -46,6 +48,14 @@ function(instance, context) {
     s + '.pr.child .pn{color:#64748b;font-weight:400;}',
     s + '.cg-row.sel{background:rgba(233,30,140,0.05);}',
     s + '.pn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
+    s + '.po{width:18px;flex-shrink:0;text-align:center;font-size:10px;font-weight:700;color:#64748b;}',
+    s + '.pd{width:46px;flex-shrink:0;text-align:center;font-size:10px;font-weight:600;color:#64748b;}',
+    s + '.col-lbl{position:absolute;bottom:3px;font-size:9px;font-weight:700;color:#94a3b8;text-align:center;}',
+    s + '.col-lbl-ord{width:18px;left:29px;}',
+    s + '.col-lbl-date{width:46px;left:52px;}',
+    s + '.col-lbl-statut{width:56px;left:103px;}',
+    s + '.ps{width:56px;flex-shrink:0;display:flex;align-items:center;}',
+    s + '.ps-badge{display:inline-block;max-width:100%;padding:1px 6px;border-radius:8px;font-size:9px;font-weight:700;line-height:1.5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
     s + '.chv{width:14px;height:14px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:9px;cursor:pointer;transition:transform .12s;}',
     s + '.chv.open{transform:rotate(90deg);}',
     s + '.chv-ph{width:14px;flex-shrink:0;}',
@@ -89,7 +99,7 @@ function(instance, context) {
     s + '.dd.today{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;background:#e91e8c;color:#fff;border-radius:4px;line-height:1;}',
 
     /* rangée des compteurs (mise en avant : c\'est la donnée clé de la charge) */
-    s + '.cr{display:flex;background:#fafafa;padding:4px 0;border-top:1px solid #eeeff1;}',
+    s + '.cr{display:flex;background:#fdf2f8;padding:4px 0;border-top:2px solid #f9a8d4;margin-top:4px;}',
     s + '.cc{flex-shrink:0;text-align:center;font-size:13px;font-weight:800;line-height:1.1;}',
     s + '.cc[data-tip]{cursor:help;}',
 
@@ -150,7 +160,7 @@ function(instance, context) {
       '<button class="aj">Aujourd\'hui</button>' +
     '</div>' +
     '<div class="bd">' +
-      '<div class="lp"><div class="lh"><span class="cr-lbl">Nb. équipes présentes sur chantier →</span></div><div class="pl"></div></div>' +
+      '<div class="lp"><div class="lh"><span class="cr-lbl">Nb. équipes présentes sur chantier →</span><span class="col-lbl col-lbl-ord">Ordre</span><span class="col-lbl col-lbl-date">Date</span><span class="col-lbl col-lbl-statut">Statut</span></div><div class="pl"></div><div class="lp-rz"></div></div>' +
       '<div class="rp"><div class="ch"></div><div class="cg"></div><div class="mo-seps"></div></div>' +
       '<div class="ld"><div class="ls" style="animation:pcSpin_' + instanceId + ' .7s linear infinite"></div></div>' +
     '</div>';
@@ -175,6 +185,41 @@ function(instance, context) {
   instance.data.yrPrevBtn = root.querySelector('.yr-prev');
   instance.data.yrNextBtn = root.querySelector('.yr-next');
   instance.data.yrLabel   = root.querySelector('.yr-label');
+  instance.data.lpResizer = root.querySelector('.lp-rz');
+
+  /* ── Redimensionnement du panneau chantier (drag sur la bordure droite) ── */
+  var LP_MIN = 200, LP_MAX = 800;
+  var LP_WIDTH_KEY = 'pc_lp_width';
+  (function() {
+    var savedW = null;
+    try { savedW = parseInt(localStorage.getItem(LP_WIDTH_KEY), 10); } catch (e) {}
+    if (savedW && savedW >= LP_MIN && savedW <= LP_MAX) {
+      root.style.setProperty('--pc-lw', savedW + 'px');
+    }
+    var dragging = false, startX = 0, startW = 0;
+    instance.data.lpResizer.addEventListener('mousedown', function(e) {
+      dragging = true;
+      startX = e.clientX;
+      startW = instance.data.leftPnl.getBoundingClientRect().width;
+      instance.data.lpResizer.classList.add('rz-active');
+      document.body.style.userSelect = 'none';
+      e.preventDefault();
+    });
+    document.addEventListener('mousemove', function(e) {
+      if (!dragging) { return; }
+      var w = startW + (e.clientX - startX);
+      w = Math.max(LP_MIN, Math.min(LP_MAX, w));
+      root.style.setProperty('--pc-lw', w + 'px');
+    });
+    document.addEventListener('mouseup', function() {
+      if (!dragging) { return; }
+      dragging = false;
+      instance.data.lpResizer.classList.remove('rz-active');
+      document.body.style.userSelect = '';
+      var w = instance.data.leftPnl.getBoundingClientRect().width;
+      try { localStorage.setItem(LP_WIDTH_KEY, Math.round(w)); } catch (e) {}
+    });
+  })();
 
   /* ── État hiérarchie / affichage ─────────────────────────────────── */
   instance.data.expanded        = {};    // { chantierId: true } → enfants visibles
@@ -207,6 +252,30 @@ function(instance, context) {
     return isNaN(d.getTime()) ? null : d;
   }
   function fmtDate(dt) { return dt.getDate() + ' ' + MONTHS_SHORT[dt.getMonth()]; }
+  var STATUT_PALETTE = [
+    { bg: '#dbeafe', fg: '#1d4ed8' }, { bg: '#dcfce7', fg: '#15803d' },
+    { bg: '#fef3c7', fg: '#b45309' }, { bg: '#fce7f3', fg: '#be185d' },
+    { bg: '#ede9fe', fg: '#6d28d9' }, { bg: '#e0f2fe', fg: '#0369a1' },
+    { bg: '#fee2e2', fg: '#b91c1c' }, { bg: '#f1f5f9', fg: '#475569' },
+  ];
+  function statutColor(txt) {
+    var h = 0;
+    for (var i = 0; i < txt.length; i++) { h = (h * 31 + txt.charCodeAt(i)) >>> 0; }
+    return STATUT_PALETTE[h % STATUT_PALETTE.length];
+  }
+  function fgForHex(hex) {
+    var m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    if (!m) return '#1e293b';
+    var r = parseInt(m[1], 16), g = parseInt(m[2], 16), b = parseInt(m[3], 16);
+    var lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    return lum > 0.6 ? '#1e293b' : '#fff';
+  }
+  function fmtDateShort(dt) {
+    var dd = ('0' + dt.getDate()).slice(-2);
+    var mm = ('0' + (dt.getMonth() + 1)).slice(-2);
+    var yy = ('' + dt.getFullYear()).slice(-2);
+    return dd + '/' + mm + '/' + yy;
+  }
   function bgTint(hex) {
     return /^#[0-9a-fA-F]{6}$/.test(hex) ? hex + '22' : 'rgba(148,163,184,0.15)';
   }
@@ -623,8 +692,18 @@ function(instance, context) {
       // Bouton "aller à l'item" : scroll direct vers la position de l'item dans le planning, désactivé si pas de dates.
       var hasGoto = row.scrollX != null;
       var gotoBtn = '<button class="goto-btn' + (hasGoto ? '' : ' disabled') + '" data-idx="' + ri + '" title="' + (hasGoto ? 'Aller à l’item' : 'Aucune date renseignée') + '">→</button>';
+      var ordreTxt = (row.ch.ordreDevant != null) ? row.ch.ordreDevant : '';
+      var dateTxt  = row.ch.prochainDemarrage ? fmtDateShort(row.ch.prochainDemarrage) : '';
+      var statutHtml = '';
+      if (row.ch.statut) {
+        var col = row.ch.statutCouleur ? { bg: row.ch.statutCouleur, fg: fgForHex(row.ch.statutCouleur) } : statutColor(row.ch.statut);
+        statutHtml = '<span class="ps-badge" style="background:' + col.bg + ';color:' + col.fg + ';" title="' + row.ch.statut.replace(/"/g, '&quot;') + '">' + row.ch.statut + '</span>';
+      }
       return '<div class="pr' + (row.type === 'child' ? ' child' : '') + '" data-name="' + row.ch.nom.replace(/"/g, '&quot;') + '" data-idx="' + ri + '" style="height:' + rowHeights[ri] + 'px;">' +
                chv +
+               '<div class="po">' + ordreTxt + '</div>' +
+               '<div class="pd">' + dateTxt + '</div>' +
+               '<div class="ps">' + statutHtml + '</div>' +
                '<div class="pn">' + row.ch.nom + '</div>' +
                '<span class="pr-actions">' + selBtn + gotoBtn + '</span>' +
              '</div>';
@@ -870,6 +949,14 @@ function(instance, context) {
     instance.data.lastMouseX = null;
     if (instance.data.colHlEl) instance.data.colHlEl.style.display = 'none';
   });
+  instance.data.calHdr.addEventListener('mousemove', function(e) {
+    instance.data.lastMouseX = e.clientX;
+    instance.data.updateColHl(e.clientX);
+  });
+  instance.data.calHdr.addEventListener('mouseleave', function() {
+    instance.data.lastMouseX = null;
+    if (instance.data.colHlEl) instance.data.colHlEl.style.display = 'none';
+  });
 
   /* ── Nom des items "épinglé" au scroll horizontal : quand le bord gauche de l'item
      sort de la zone visible, le libellé reste collé au bord visible (comme repoussé
@@ -968,6 +1055,10 @@ function(instance, context) {
       return {
         id: c.id, nom: c.nom, parentId: c.parentId, hasChild: c.hasChild,
         periods: c.periods.map(function(p) { return { deb: new Date(p.deb), fin: new Date(p.fin) }; }),
+        prochainDemarrage: c.prochainDemarrage ? new Date(c.prochainDemarrage) : null,
+        ordreDevant: c.ordreDevant != null ? c.ordreDevant : null,
+        statut: c.statut || null,
+        statutCouleur: c.statutCouleur || null,
         raw: null,
       };
     });

@@ -33,6 +33,9 @@ function(instance, properties, context) {
     var fieldParent       = properties.field_cha_parent       || 'parent_chantier'; // champ chantier (relation vers le parent)
     var fieldHasChild     = properties.field_cha_has_child    || 'has_child';       // champ boolean : regroupement pur (pas de bande de chef)
     var fieldDateJoursOff = properties.field_date_jours_off   || 'date';            // champ date sur table_jours_off
+    var fieldProchainDemarrage = properties.field_cha_prochain_demarrage || 'prochain_demarrage';
+    var fieldOrdreDevant       = properties.field_cha_ordre_devant       || 'ordre_devant';
+    var fieldStatut            = properties.field_cha_statut            || 'statut';    // relation vers Option Set
 
     var fieldCdChantier   = properties.field_fk_chantier      || 'chantier';        // sur table_chef_date : relation vers le chantier
     var fieldCdDateDebut  = properties.field_cd_date_debut    || 'date_debut';
@@ -93,12 +96,18 @@ function(instance, properties, context) {
         var parentObj = ch.get(fieldParent);
         var parentId  = (parentObj && typeof parentObj.get === 'function') ? parentObj.get('_id') : null;
         var hasChild  = !!ch.get(fieldHasChild);
+        var prochainDemarrage = d0(ch.get(fieldProchainDemarrage));
+        var ordreDevant       = ch.get(fieldOrdreDevant);
+        ordreDevant = (ordreDevant === null || ordreDevant === undefined || ordreDevant === '') ? null : ordreDevant;
+        var statutObj = ch.get(fieldStatut);
+        var statut = (statutObj && typeof statutObj.get === 'function') ? (statutObj.get('display') || null) : (statutObj || null);
+        var statutCouleur = (statutObj && typeof statutObj.get === 'function') ? (statutObj.get('couleur') || null) : null;
         var periods = (deb && fin) ? [{ deb: deb, fin: fin }] : [];
-        return { id: ch.get('_id'), nom: nom, periods: periods, parentId: parentId, hasChild: hasChild, raw: ch };
+        return { id: ch.get('_id'), nom: nom, periods: periods, parentId: parentId, hasChild: hasChild, prochainDemarrage: prochainDemarrage, ordreDevant: ordreDevant, statut: statut, statutCouleur: statutCouleur, raw: ch };
       } catch(e) {
         if (!(e instanceof Error)) throw e;
         console.error('[PC] chantier[' + idx + '] crash:', e.message, '| ch=', ch);
-        return { id: 'err-' + idx, nom: '(erreur)', periods: [], parentId: null, hasChild: false, raw: null };
+        return { id: 'err-' + idx, nom: '(erreur)', periods: [], parentId: null, hasChild: false, prochainDemarrage: null, ordreDevant: null, statut: null, statutCouleur: null, raw: null };
       }
     }
     var chantiersAll = chantiersRaw.map(parseChantier);
@@ -181,7 +190,9 @@ function(instance, properties, context) {
     /* ── Fingerprint périodes + hiérarchie + chef_date ─────────────── */
     var fp = chantiersAll.map(function(c) {
       return (c.periods.length ? c.periods[0].deb.getTime() + '-' + c.periods[0].fin.getTime() : '')
-        + ':' + (c.parentId || '') + ':' + (c.hasChild ? 1 : 0);
+        + ':' + (c.parentId || '') + ':' + (c.hasChild ? 1 : 0)
+        + ':' + (c.prochainDemarrage ? c.prochainDemarrage.getTime() : '') + ':' + (c.ordreDevant != null ? c.ordreDevant : '')
+        + ':' + (c.statut || '') + ':' + (c.statutCouleur || '');
     }).join('|') + '||' + chefDates.map(function(cd) {
       return cd.chantierId + ':' + cd.deb.getTime() + '-' + cd.fin.getTime() + ':' + (cd.duree != null ? cd.duree : '') + ':' + (cd.chefName || '') + ':' + (cd.chefColor || '');
     }).join('|');
@@ -211,6 +222,10 @@ function(instance, properties, context) {
         return {
           id: c.id, nom: c.nom, parentId: c.parentId, hasChild: c.hasChild,
           periods: c.periods.map(function(p) { return { deb: p.deb.getTime(), fin: p.fin.getTime() }; }),
+          prochainDemarrage: c.prochainDemarrage ? c.prochainDemarrage.getTime() : null,
+          ordreDevant: c.ordreDevant,
+          statut: c.statut,
+          statutCouleur: c.statutCouleur,
         };
       }),
       chefDates: chefDates.map(function(cd) {
