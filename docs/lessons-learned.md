@@ -333,3 +333,33 @@ Le resize corrige tout par hasard : il déclenche setCanvasHeight() alors que le
 Ce qu'on a fait : appeler setCanvasHeight() depuis update.js, qui s'exécute à chaque render Bubble — y compris celui qui rend le plugin visible. C'est le seul moment où les coordonnées sont fiables.
 
 ---
+
+## 13. Jointure côté navigateur via id texte (au lieu d'une vraie relation Bubble)
+
+**Contexte (planning_charge) :** `table_chef_date` référence `table_cha` (chantier), `table_user` (chef interne) et `table_contact` (sous-traitant). Ces liens sont des **champs Texte contenant l'id**, pas des relations Bubble natives.
+
+**Pourquoi pas une vraie relation :** une relation Bubble native oblige Bubble à la résoudre côté serveur avant d'envoyer les données au plugin → payload plus lourd, plus lent à charger. Avec un champ Texte, Bubble envoie juste l'id brut, et le plugin fait le lookup lui-même.
+
+**Pattern :** construire une map `id → objet` pour chaque table liée, une seule fois par `update.js`, puis résoudre chaque ligne par simple lookup (O(1)) :
+
+```js
+// 1. Maps id → objet, une par table liée
+function buildMap(dataSource, nameField, couleurField) {
+  var map = {};
+  readList(dataSource).forEach(function (item) {
+    var id = item.get("_id");
+    map[id] = { name: item.get(nameField), color: item.get(couleurField) };
+  });
+  return map;
+}
+var userById = buildMap(properties.table_user, fieldUserName, fieldUserCouleur);
+var contactById = buildMap(properties.table_contact, fieldContactName, null);
+
+// 2. Jointure : lookup par id texte, pas de relation Bubble à résoudre
+var chefId = chefDateObj.get(fieldCdChefChv); // texte : id du User
+var chefName = userById[chefId] ? userById[chefId].name : null;
+```
+
+**Règle associée :** quand un champ relationnel n'est pas exposé en relation native (cf. point 1), prévoir côté Bubble un champ Texte où l'id est stocké manuellement, et faire la résolution dans le JS du plugin plutôt que de compter sur `.get()` natif.
+
+---

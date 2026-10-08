@@ -44,21 +44,11 @@ function(instance, context) {
     s + '.pr{display:flex;align-items:center;height:30px;padding:0 12px 0 10px;border-bottom:1px solid #f1f5f9;font-size:11.5px;color:#374151;cursor:pointer;gap:5px;}',
     s + '.pr:hover{background:#f8fafc;}',
     s + '.pr.sel{background:#fdf2f8;box-shadow:inset 3px 0 0 #e91e8c;}',
-    s + '.pr.child{padding-left:26px;}',
-    s + '.pr.child .pn{color:#64748b;font-weight:400;}',
     s + '.cg-row.sel{background:rgba(233,30,140,0.05);}',
     s + '.pn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
-    s + '.po{width:18px;flex-shrink:0;text-align:center;font-size:10px;font-weight:700;color:#64748b;}',
-    s + '.pd{width:46px;flex-shrink:0;text-align:center;font-size:10px;font-weight:600;color:#64748b;}',
-    s + '.col-lbl{position:absolute;bottom:3px;font-size:9px;font-weight:700;color:#94a3b8;text-align:center;}',
-    s + '.col-lbl-ord{width:18px;left:29px;}',
-    s + '.col-lbl-date{width:46px;left:52px;}',
-    s + '.col-lbl-statut{width:56px;left:103px;}',
-    s + '.ps{width:56px;flex-shrink:0;display:flex;align-items:center;}',
-    s + '.ps-badge{display:inline-block;max-width:100%;padding:1px 6px;border-radius:8px;font-size:9px;font-weight:700;line-height:1.5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
-    s + '.chv{width:14px;height:14px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:9px;cursor:pointer;transition:transform .12s;}',
-    s + '.chv.open{transform:rotate(90deg);}',
-    s + '.chv-ph{width:14px;flex-shrink:0;}',
+    /* colonne statut : largeur fixe pour que le point reste aligné verticalement sur toutes les lignes */
+    s + '.ps{width:8px;flex-shrink:0;display:flex;align-items:center;justify-content:center;}',
+    s + '.ps-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}',
     /* bouton "sélectionner ce chantier" — petit badge "i" toujours visible, discret mais repérable */
     s + '.pr-actions{margin-left:auto;flex-shrink:0;display:flex;align-items:center;gap:4px;}',
     s + '.sel-btn{flex-shrink:0;width:16px;height:16px;border:1.5px solid #cbd5e1;border-radius:50%;background:#fff;color:#94a3b8;font-size:9px;font-weight:800;font-style:italic;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background .1s,color .1s,border-color .1s;}',
@@ -160,7 +150,7 @@ function(instance, context) {
       '<button class="aj">Aujourd\'hui</button>' +
     '</div>' +
     '<div class="bd">' +
-      '<div class="lp"><div class="lh"><span class="cr-lbl">Nb. équipes présentes sur chantier →</span><span class="col-lbl col-lbl-ord">Ordre</span><span class="col-lbl col-lbl-date">Date</span><span class="col-lbl col-lbl-statut">Statut</span></div><div class="pl"></div><div class="lp-rz"></div></div>' +
+      '<div class="lp"><div class="lh"><span class="cr-lbl">Nb. équipes présentes sur chantier →</span><span class="col-lbl col-lbl-ord">Ordre</span></div><div class="pl"></div><div class="lp-rz"></div></div>' +
       '<div class="rp"><div class="ch"></div><div class="cg"></div><div class="mo-seps"></div></div>' +
       '<div class="ld"><div class="ls" style="animation:pcSpin_' + instanceId + ' .7s linear infinite"></div></div>' +
     '</div>';
@@ -252,32 +242,15 @@ function(instance, context) {
     return isNaN(d.getTime()) ? null : d;
   }
   function fmtDate(dt) { return dt.getDate() + ' ' + MONTHS_SHORT[dt.getMonth()]; }
-  var STATUT_PALETTE = [
-    { bg: '#dbeafe', fg: '#1d4ed8' }, { bg: '#dcfce7', fg: '#15803d' },
-    { bg: '#fef3c7', fg: '#b45309' }, { bg: '#fce7f3', fg: '#be185d' },
-    { bg: '#ede9fe', fg: '#6d28d9' }, { bg: '#e0f2fe', fg: '#0369a1' },
-    { bg: '#fee2e2', fg: '#b91c1c' }, { bg: '#f1f5f9', fg: '#475569' },
-  ];
+  function bgTint(hex) {
+    return /^#[0-9a-fA-F]{6}$/.test(hex) ? hex + '22' : 'rgba(148,163,184,0.15)';
+  }
+  // Couleur de secours pour le point statut quand le chantier n'a pas de couleur définie.
+  var STATUT_PALETTE = ['#2563eb', '#16a34a', '#d97706', '#db2777', '#7c3aed', '#0891b2', '#dc2626', '#64748b'];
   function statutColor(txt) {
     var h = 0;
     for (var i = 0; i < txt.length; i++) { h = (h * 31 + txt.charCodeAt(i)) >>> 0; }
     return STATUT_PALETTE[h % STATUT_PALETTE.length];
-  }
-  function fgForHex(hex) {
-    var m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-    if (!m) return '#1e293b';
-    var r = parseInt(m[1], 16), g = parseInt(m[2], 16), b = parseInt(m[3], 16);
-    var lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-    return lum > 0.6 ? '#1e293b' : '#fff';
-  }
-  function fmtDateShort(dt) {
-    var dd = ('0' + dt.getDate()).slice(-2);
-    var mm = ('0' + (dt.getMonth() + 1)).slice(-2);
-    var yy = ('' + dt.getFullYear()).slice(-2);
-    return dd + '/' + mm + '/' + yy;
-  }
-  function bgTint(hex) {
-    return /^#[0-9a-fA-F]{6}$/.test(hex) ? hex + '22' : 'rgba(148,163,184,0.15)';
   }
 
   /* ── Cache localStorage (rendu instantané au chargement, avant même la réponse Bubble) ──
@@ -503,34 +476,21 @@ function(instance, context) {
        Le filtre est appliqué ICI, avant tout calcul de position, pour que la liste
        et la grille restent alignées sur le même jeu de lignes visibles (un simple
        masquage CSS après-coup désynchronise les deux panneaux).
-       Règle : si un enfant matche la recherche, son parent reste visible (pour le
-       contexte) même si le nom du parent lui-même ne matche pas, et l'enfant
-       s'affiche automatiquement (pas besoin de déplier manuellement). ── */
+       Affichage à plat : les chantiers parents purement "groupements" (hasChild)
+       ne sont pas affichés, seuls les chantiers terrain (enfants, ou chantiers
+       racine sans sous-chantiers) apparaissent, à plat. ── */
     var searchQ = (instance.data.searchQuery || '').toLowerCase().trim();
     function matches(nom) { return !searchQ || nom.toLowerCase().indexOf(searchQ) !== -1; }
 
     var rows = [];
     chantiers.forEach(function(p) {
       var kids = childrenMap[p.id] || [];
-      if (kids.length && instance.data.expanded[p.id] === undefined) {
-        instance.data.expanded[p.id] = true; // déplié par défaut à la première apparition du parent
+      if (!kids.length && matches(p.nom)) {
+        rows.push({ type: 'parent', ch: p });
       }
-      var parentMatches  = matches(p.nom);
-      var matchingKids   = searchQ ? kids.filter(function(k) { return matches(k.nom); }) : kids;
-
-      if (searchQ && !parentMatches && matchingKids.length === 0) { return; } // ni le parent ni ses enfants ne matchent
-
-      rows.push({ type: 'parent', ch: p, hasKids: !!kids.length });
-
-      var childrenToShow;
-      if (!searchQ) {
-        childrenToShow = instance.data.expanded[p.id] ? kids : [];
-      } else if (parentMatches) {
-        childrenToShow = instance.data.expanded[p.id] ? kids : []; // le parent est le résultat trouvé, on respecte le toggle
-      } else {
-        childrenToShow = matchingKids; // parent affiché uniquement pour contexte → on ne montre que les enfants trouvés
-      }
-      childrenToShow.forEach(function(k) { rows.push({ type: 'child', ch: k, parentId: p.id }); });
+      kids.forEach(function(k) {
+        if (matches(k.nom)) { rows.push({ type: 'child', ch: k, parentId: p.id }); }
+      });
     });
 
     instance.data.rowsList = rows;
@@ -681,28 +641,15 @@ function(instance, context) {
 
     /* ── Liste des projets (panneau gauche) ────────────────────────── */
     var projHtml = rows.map(function(row, ri) {
-      var isGroupRow = (row.type === 'parent' && row.ch.hasChild);
-      var chv = row.type === 'parent'
-        ? (row.hasKids
-            ? '<span class="chv' + (instance.data.expanded[row.ch.id] ? ' open' : '') + '" data-pid="' + row.ch.id + '">▸</span>'
-            : '<span class="chv-ph"></span>')
-        : '<span class="chv-ph"></span>';
-      // Bouton "i" (sélectionner) : pas de sens sur un chantier parent, il n'y a rien à sélectionner (regroupement).
-      var selBtn = isGroupRow ? '' : '<button class="sel-btn" data-idx="' + ri + '" title="Sélectionner ce chantier">i</button>';
-      // Bouton "aller à l'item" : scroll direct vers la position de l'item dans le planning, désactivé si pas de dates.
+      var selBtn  = '<button class="sel-btn" data-idx="' + ri + '" title="Sélectionner ce chantier">i</button>';
       var hasGoto = row.scrollX != null;
       var gotoBtn = '<button class="goto-btn' + (hasGoto ? '' : ' disabled') + '" data-idx="' + ri + '" title="' + (hasGoto ? 'Aller à l’item' : 'Aucune date renseignée') + '">→</button>';
-      var ordreTxt = (row.ch.ordreDevant != null) ? row.ch.ordreDevant : '';
-      var dateTxt  = row.ch.prochainDemarrage ? fmtDateShort(row.ch.prochainDemarrage) : '';
       var statutHtml = '';
       if (row.ch.statut) {
-        var col = row.ch.statutCouleur ? { bg: row.ch.statutCouleur, fg: fgForHex(row.ch.statutCouleur) } : statutColor(row.ch.statut);
-        statutHtml = '<span class="ps-badge" style="background:' + col.bg + ';color:' + col.fg + ';" title="' + row.ch.statut.replace(/"/g, '&quot;') + '">' + row.ch.statut + '</span>';
+        var dotColor = row.ch.statutCouleur || statutColor(row.ch.statut);
+        statutHtml = '<span class="ps-dot" style="background:' + dotColor + ';" title="' + row.ch.statut.replace(/"/g, '&quot;') + '"></span>';
       }
       return '<div class="pr' + (row.type === 'child' ? ' child' : '') + '" data-name="' + row.ch.nom.replace(/"/g, '&quot;') + '" data-idx="' + ri + '" style="height:' + rowHeights[ri] + 'px;">' +
-               chv +
-               '<div class="po">' + ordreTxt + '</div>' +
-               '<div class="pd">' + dateTxt + '</div>' +
                '<div class="ps">' + statutHtml + '</div>' +
                '<div class="pn">' + row.ch.nom + '</div>' +
                '<span class="pr-actions">' + selBtn + gotoBtn + '</span>' +
@@ -866,18 +813,9 @@ function(instance, context) {
   };
 
   /* ── Clic dans la liste gauche ────────────────────────────────────────
-     - chevron → toggle déplier/replier direct.
-     - bouton "›" → activation réelle (voir activateRow ci-dessus).
+     - bouton "i" → activation réelle (voir activateRow ci-dessus).
      - reste de la ligne (nom...) → simple surbrillance, aucun event Bubble. ── */
   instance.data.projList.addEventListener('click', function(e) {
-    var chv = e.target.closest ? e.target.closest('.chv') : null;
-    if (chv) {
-      var pid = chv.getAttribute('data-pid');
-      instance.data.expanded[pid] = !instance.data.expanded[pid];
-      instance.data.reRender();
-      return;
-    }
-
     var btn = e.target.closest ? e.target.closest('.sel-btn') : null;
     if (btn) {
       var bidx = parseInt(btn.getAttribute('data-idx'), 10);
